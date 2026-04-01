@@ -16,7 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "maestro-recorder"
 
-include(":shared")
-include(":cli")
 include(":agent")
-include(":dashboard")

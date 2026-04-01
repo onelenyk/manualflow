@@ -4,6 +4,10 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 local.properties
 
+# Node
+node_modules/
+dist/
+
 # IDE
 .idea/
 *.iml
@@ -12,7 +16,3 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
-
-# APKs (generated)
-*.apk
-!agent/build/outputs/

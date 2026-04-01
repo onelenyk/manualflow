@@ -122,71 +122,45 @@ export function ScreenMirror({ onTap }: ScreenMirrorProps) {
     const decoder = videoDecoderRef.current;
     if (!decoder || decoder.state === 'closed') return;
 
-    // Accumulate incoming data
-    const incoming = new Uint8Array(data);
-    const prev = pendingBufferRef.current;
-    const combined = new Uint8Array(prev.length + incoming.length);
-    combined.set(prev);
-    combined.set(incoming, prev.length);
-    pendingBufferRef.current = combined;
+    // Raw Annex B H.264 stream (send_frame_meta=false)
+    // Each WS message is a chunk of the stream - just parse NAL units and decode
+    const packet = new Uint8Array(data);
+    const nalUnits = parseNalUnits(packet);
+    if (nalUnits.length === 0) return;
 
-    // Process complete frames from the buffer
-    // scrcpy send_frame_meta format: 8-byte PTS (big-endian) + 4-byte packet size + packet data
-    while (pendingBufferRef.current.length >= 12) {
-      const buf = pendingBufferRef.current;
-      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const hasSPS = nalUnits.some(n => n.type === 7);
+    const hasIDR = nalUnits.some(n => n.type === 5);
+    const isKeyFrame = hasSPS || hasIDR;
 
-      const packetSize = view.getUint32(8, false); // bytes 8-11 = packet size (big-endian)
-      const totalSize = 12 + packetSize;
-
-      if (buf.length < totalSize) break; // wait for more data
-
-      const packet = buf.slice(12, totalSize);
-      pendingBufferRef.current = buf.slice(totalSize);
-
-      try {
-        // Parse NAL units to find SPS, PPS, IDR
-        const nalUnits = parseNalUnits(packet);
-        const hasSPS = nalUnits.some(n => n.type === 7);
-        const hasIDR = nalUnits.some(n => n.type === 5);
-        const isKeyFrame = hasSPS || hasIDR;
-
-        // Configure decoder when we first see SPS+PPS
-        if (!configuredRef.current && hasSPS) {
-          const sps = nalUnits.find(n => n.type === 7);
-          if (sps && sps.data.length > 3) {
-            const profile = sps.data[1];
-            const compat = sps.data[2];
-            const level = sps.data[3];
-            const codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
-
-            // Build AVC decoder config record (avcC box) from SPS+PPS
-            const pps = nalUnits.find(n => n.type === 8);
-            if (pps) {
-              const description = buildAvcC(sps.data, pps.data);
-              decoder.configure({
-                codec,
-                description,
-                optimizeForLatency: true,
-              });
-              configuredRef.current = true;
-            }
-          }
+    try {
+      // Configure decoder on first SPS+PPS
+      if (!configuredRef.current && hasSPS) {
+        const sps = nalUnits.find(n => n.type === 7);
+        const pps = nalUnits.find(n => n.type === 8);
+        if (sps && pps && sps.data.length > 3) {
+          const profile = sps.data[1];
+          const compat = sps.data[2];
+          const level = sps.data[3];
+          const codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
+          decoder.configure({
+            codec,
+            description: buildAvcC(sps.data, pps.data),
+            optimizeForLatency: true,
+          });
+          configuredRef.current = true;
         }
-
-        if (!configuredRef.current) continue;
-
-        const chunk = new EncodedVideoChunk({
-          type: isKeyFrame ? 'key' : 'delta',
-          timestamp: timestampRef.current,
-          data: packet,
-        });
-        timestampRef.current += 33333;
-
-        decoder.decode(chunk);
-      } catch (e) {
-        console.error('Decode error:', e);
       }
+
+      if (!configuredRef.current) return;
+
+      decoder.decode(new EncodedVideoChunk({
+        type: isKeyFrame ? 'key' : 'delta',
+        timestamp: timestampRef.current,
+        data: packet,
+      }));
+      timestampRef.current += 33333;
+    } catch (e) {
+      // Skip bad frames silently
     }
   };
 

@@ -23,9 +23,7 @@ android {
 }
 
 dependencies {
-    implementation("org.nanohttpd:nanohttpd:2.3.1")
-    implementation(libs.kotlin.coroutines.core)
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation(libs.nanohttpd)
 
     implementation(libs.uiautomator)
     implementation(libs.androidx.test.runner)
