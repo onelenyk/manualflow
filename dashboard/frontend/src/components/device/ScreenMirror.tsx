@@ -62,8 +62,9 @@ export function ScreenMirror({ onTap }: ScreenMirrorProps) {
         frame.close();
       },
       error: (error: DOMException) => {
-        console.error('VideoDecoder error:', error);
-        setDecoderError(error.message);
+        console.warn('VideoDecoder error:', error.message);
+        // Don't kill the component - reset decoder for next keyframe
+        configuredRef.current = false;
       },
     });
 
@@ -118,49 +119,62 @@ export function ScreenMirror({ onTap }: ScreenMirrorProps) {
     !!selectedDevice
   );
 
+  // Store SPS+PPS to prepend to IDR frames
+  const spsDataRef = useRef<Uint8Array | null>(null);
+
   const processVideoData = (data: ArrayBuffer) => {
     const decoder = videoDecoderRef.current;
     if (!decoder || decoder.state === 'closed') return;
 
-    // Raw Annex B H.264 stream (send_frame_meta=false)
-    // Each WS message is a chunk of the stream - just parse NAL units and decode
     const packet = new Uint8Array(data);
     const nalUnits = parseNalUnits(packet);
     if (nalUnits.length === 0) return;
 
+    // Check what NAL types are in this message
     const hasSPS = nalUnits.some(n => n.type === 7);
     const hasIDR = nalUnits.some(n => n.type === 5);
-    const isKeyFrame = hasSPS || hasIDR;
+    const hasSlice = nalUnits.some(n => n.type === 1);
+
+    // If this message has SPS+PPS, configure decoder and store them
+    if (hasSPS) {
+      const sps = nalUnits.find(n => n.type === 7)!;
+      const pps = nalUnits.find(n => n.type === 8);
+      if (pps && sps.data.length > 3) {
+        const codec = `avc1.${sps.data[1].toString(16).padStart(2, '0')}${sps.data[2].toString(16).padStart(2, '0')}${sps.data[3].toString(16).padStart(2, '0')}`;
+        try {
+          decoder.configure({ codec, optimizeForLatency: true });
+          configuredRef.current = true;
+          spsDataRef.current = packet; // Store SPS+PPS message
+        } catch { return; }
+      }
+    }
+
+    if (!configuredRef.current) return;
 
     try {
-      // Configure decoder on first SPS+PPS
-      if (!configuredRef.current && hasSPS) {
-        const sps = nalUnits.find(n => n.type === 7);
-        const pps = nalUnits.find(n => n.type === 8);
-        if (sps && pps && sps.data.length > 3) {
-          const profile = sps.data[1];
-          const compat = sps.data[2];
-          const level = sps.data[3];
-          const codec = `avc1.${profile.toString(16).padStart(2, '0')}${compat.toString(16).padStart(2, '0')}${level.toString(16).padStart(2, '0')}`;
-          decoder.configure({
-            codec,
-            description: buildAvcC(sps.data, pps.data),
-            optimizeForLatency: true,
-          });
-          configuredRef.current = true;
+      if (hasIDR) {
+        // Keyframe: prepend stored SPS+PPS if not already in this message
+        let frameData = packet;
+        if (!hasSPS && spsDataRef.current) {
+          frameData = new Uint8Array(spsDataRef.current.length + packet.length);
+          frameData.set(spsDataRef.current);
+          frameData.set(packet, spsDataRef.current.length);
         }
+        decoder.decode(new EncodedVideoChunk({
+          type: 'key', timestamp: timestampRef.current, data: frameData,
+        }));
+        timestampRef.current += 33333;
+      } else if (hasSlice) {
+        // Delta frame
+        decoder.decode(new EncodedVideoChunk({
+          type: 'delta', timestamp: timestampRef.current, data: packet,
+        }));
+        timestampRef.current += 33333;
       }
-
-      if (!configuredRef.current) return;
-
-      decoder.decode(new EncodedVideoChunk({
-        type: isKeyFrame ? 'key' : 'delta',
-        timestamp: timestampRef.current,
-        data: packet,
-      }));
-      timestampRef.current += 33333;
-    } catch (e) {
-      // Skip bad frames silently
+      // Skip SPS-only messages (already handled above)
+    } catch {
+      // Skip bad frames, wait for next keyframe
+      configuredRef.current = false;
     }
   };
 

@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCRCPY_JAR = path.resolve(__dirname, '../../../scrcpy-server.jar');
+const SCRCPY_JAR = path.resolve(__dirname, '../../../../scrcpy-server.jar');
 const DEVICE_PATH = '/data/local/tmp/scrcpy-server.jar';
 const SCRCPY_VERSION = '3.1';
 const LOCAL_PORT = 27183;
