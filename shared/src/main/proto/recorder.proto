@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package maestrorecorder;
+
+option java_package = "com.maestrorecorder.shared.proto";
+option java_multiple_files = true;
+
+service RecorderAgent {
+  // Find element at screen coordinates
+  rpc GetElementAt (Coordinates) returns (UiElementResponse);
+
+  // Get device screen and input information
+  rpc GetDeviceInfo (Empty) returns (DeviceInfoResponse);
+}
+
+message Empty {}
+
+message Coordinates {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message UiElementResponse {
+  string class_name = 1;
+  string text = 2;
+  string resource_id = 3;
+  string content_description = 4;
+  Bounds bounds = 5;
+  bool clickable = 6;
+  bool enabled = 7;
+  bool focused = 8;
+}
+
+message Bounds {
+  int32 left = 1;
+  int32 top = 2;
+  int32 right = 3;
+  int32 bottom = 4;
+}
+
+message DeviceInfoResponse {
+  int32 screen_width = 1;
+  int32 screen_height = 2;
+  int32 density = 3;
+}
