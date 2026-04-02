@@ -29,18 +29,22 @@ export function DebugView() {
     setGeteventLines([]);
     setGeteventRunning(true);
 
-    const es = new EventSource(`/api/debug/getevent`);
+    const es = new EventSource(`/api/debug/events`);
     esRef.current = es;
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'event') {
+      if (data.type === 'event' && data.event) {
+        const e = data.event;
+        const line = `[${e.type}] ${e.text || e.contentDescription || e.className || ''} ${e.resourceId ? `(${e.resourceId})` : ''} ${e.packageName ? `[${e.packageName}]` : ''}`;
         setGeteventLines(prev => {
-          const next = [...prev, data.line];
+          const next = [...prev, line.trim()];
           return next.length > 500 ? next.slice(-500) : next;
         });
       } else if (data.type === 'info' || data.type === 'error') {
         setGeteventLines(prev => [...prev, `[${data.type}] ${data.message}`]);
+      } else if (data.type === 'raw') {
+        setGeteventLines(prev => [...prev, data.line]);
       }
     };
 
@@ -103,7 +107,7 @@ export function DebugView() {
   }
 
   const tabs = [
-    { id: 'getevent' as const, label: 'Touch Events' },
+    { id: 'getevent' as const, label: 'Device Events' },
     { id: 'adb' as const, label: 'ADB Shell' },
     { id: 'hierarchy' as const, label: 'UI Hierarchy' },
     { id: 'logcat' as const, label: 'Agent Logs' },
