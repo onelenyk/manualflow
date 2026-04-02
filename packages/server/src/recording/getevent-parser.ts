@@ -2,22 +2,29 @@ import { spawn, execFile } from 'child_process';
 import { EventEmitter } from 'events';
 import type { GeteventLine, InputDeviceRange } from './types.js';
 
-const LINE_REGEX = /\[\s*([\d.]+)\]\s+(\S+):\s+(\S+)\s+(\S+)\s+(\S+)/;
+// Format with device path: [timestamp] /dev/input/event3: EV_KEY BTN_TOUCH DOWN
+const LINE_REGEX_FULL = /\[\s*([\d.]+)\]\s+(\/dev\/\S+):\s+(\S+)\s+(\S+)\s+(\S+)/;
+// Format without device path (single device mode): [timestamp] EV_KEY BTN_TOUCH DOWN
+const LINE_REGEX_SHORT = /\[\s*([\d.]+)\]\s+(\S+)\s+(\S+)\s+(\S+)/;
 
-export function parseGeteventLine(line: string): GeteventLine | null {
-  const match = LINE_REGEX.exec(line);
-  if (!match) return null;
+export function parseGeteventLine(line: string, devicePath?: string): GeteventLine | null {
+  // Try full format first
+  const fullMatch = LINE_REGEX_FULL.exec(line);
+  if (fullMatch) {
+    const ts = parseFloat(fullMatch[1]);
+    if (isNaN(ts)) return null;
+    return { timestamp: ts, device: fullMatch[2], type: fullMatch[3], code: fullMatch[4], value: fullMatch[5] };
+  }
 
-  const ts = parseFloat(match[1]);
-  if (isNaN(ts)) return null;
+  // Try short format (no device path)
+  const shortMatch = LINE_REGEX_SHORT.exec(line);
+  if (shortMatch) {
+    const ts = parseFloat(shortMatch[1]);
+    if (isNaN(ts)) return null;
+    return { timestamp: ts, device: devicePath || 'unknown', type: shortMatch[2], code: shortMatch[3], value: shortMatch[4] };
+  }
 
-  return {
-    timestamp: ts,
-    device: match[2],
-    type: match[3],
-    code: match[4],
-    value: match[5],
-  };
+  return null;
 }
 
 export async function discoverInputDevice(serial: string): Promise<InputDeviceRange> {
@@ -92,8 +99,8 @@ export class GeteventStream extends EventEmitter {
       buffer = lines.pop()!;
 
       for (const line of lines) {
-        const parsed = parseGeteventLine(line);
-        if (parsed && parsed.device === this.devicePath) {
+        const parsed = parseGeteventLine(line, this.devicePath);
+        if (parsed) {
           this.emit('line', parsed);
         }
       }
