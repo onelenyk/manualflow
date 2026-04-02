@@ -4,9 +4,13 @@ import android.util.Log
 import com.maestrorecorder.agent.uiautomator.DeviceInfoProvider
 import com.maestrorecorder.agent.uiautomator.ElementResolver
 import fi.iki.elonen.NanoHTTPD
+import org.json.JSONArray
 import org.json.JSONObject
 
-class HttpServer(private val port: Int) : NanoHTTPD(port) {
+class HttpServer(
+    private val port: Int,
+    private val eventCollector: EventCollector? = null,
+) : NanoHTTPD(port) {
     companion object {
         private const val TAG = "MaestroHttpServer"
     }
@@ -20,6 +24,8 @@ class HttpServer(private val port: Int) : NanoHTTPD(port) {
             when {
                 session.uri == "/device-info" && session.method == Method.GET -> handleDeviceInfo()
                 session.uri == "/element-at" && session.method == Method.POST -> handleElementAt(session)
+                session.uri == "/events/stream" && session.method == Method.GET -> handleEventStream()
+                session.uri == "/events" && session.method == Method.GET -> handleEventsPoll()
                 else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             }
         } catch (e: Exception) {
@@ -61,6 +67,38 @@ class HttpServer(private val port: Int) : NanoHTTPD(port) {
             .put("clickable", element.clickable)
             .put("enabled", element.enabled)
             .put("focused", element.focused)
+
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+    }
+
+    /** Chunked streaming endpoint — keeps connection open, sends JSON lines as events occur */
+    private fun handleEventStream(): Response {
+        if (eventCollector == null) {
+            return newFixedLengthResponse(
+                Response.Status.SERVICE_UNAVAILABLE, "text/plain",
+                "Event collector not available"
+            )
+        }
+
+        Log.i(TAG, "Event stream client connected")
+        val inputStream = eventCollector.createStream()
+
+        return newChunkedResponse(
+            Response.Status.OK,
+            "application/x-ndjson",
+            inputStream
+        )
+    }
+
+    /** Polling endpoint — returns and clears queued events */
+    private fun handleEventsPoll(): Response {
+        if (eventCollector == null) {
+            return newFixedLengthResponse(Response.Status.OK, "application/json", "[]")
+        }
+
+        val events = eventCollector.drainEvents()
+        val json = JSONArray()
+        events.forEach { json.put(JSONObject(it)) }
 
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
