@@ -89,5 +89,31 @@ export function recordingRoutes(state: AppState) {
     });
   });
 
+  // SSE stream for parsed actions (before element lookup)
+  router.get('/recording/actions', (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const session = state.recordingSession;
+    if (!session) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Not recording' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const onAction = (action: any) => {
+      res.write(`data: ${JSON.stringify({ type: 'action', action })}\n\n`);
+    };
+
+    session.on('action', onAction);
+
+    req.on('close', () => {
+      session.off('action', onAction);
+    });
+  });
+
   return router;
 }

@@ -93,6 +93,9 @@ export class RecordingSession extends EventEmitter {
   private async onUserAction(action: UserAction): Promise<void> {
     if (!this.merger) return;
 
+    // Emit raw parsed action (for Parsed tab)
+    this.emit('action', action);
+
     try {
       const command = await this.merger.merge(action);
       this.addCommand(command);
