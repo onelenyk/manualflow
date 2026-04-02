@@ -9,7 +9,23 @@ android {
 
     defaultConfig {
         minSdk = providers.gradleProperty("android.minSdk").get().toInt()
+        targetSdk = providers.gradleProperty("android.targetSdk").get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("signing/maestro-recorder.jks")
+            storePassword = "maestro123"
+            keyAlias = "maestro"
+            keyPassword = "maestro123"
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     compileOptions {

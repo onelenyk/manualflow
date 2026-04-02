@@ -60,7 +60,15 @@ export function agentRoutes(state: AppState) {
     }
 
     try {
+      // Disable sideload verification (prevents "Unsafe app blocked" dialog)
+      await adbExec('-s', serial, 'shell', 'settings', 'put', 'global', 'verifier_verify_adb_installs', '0').catch(() => {});
+      await adbExec('-s', serial, 'shell', 'settings', 'put', 'global', 'package_verifier_enable', '0').catch(() => {});
+
       const output = await adbExec('-s', serial, 'install', '-r', '-t', '-g', '--bypass-low-target-sdk-block', APK_PATH);
+
+      // Mark as trusted installer to prevent future warnings
+      await adbExec('-s', serial, 'shell', 'pm', 'set-installer', AGENT_PKG, 'com.android.vending').catch(() => {});
+
       res.json({ status: 'installed', output });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
