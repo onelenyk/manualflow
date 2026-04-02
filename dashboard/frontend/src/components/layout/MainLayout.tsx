@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { RecordView } from '../recording/RecordView';
 import { LibraryView } from '../library/LibraryView';
 import { RunnerView } from '../runner/RunnerView';
+import { AgentView } from '../agent/AgentView';
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState('record');
@@ -17,6 +18,7 @@ export function MainLayout() {
           {activeView === 'record' && <RecordView />}
           {activeView === 'library' && <LibraryView />}
           {activeView === 'runner' && <RunnerView />}
+          {activeView === 'agent' && <AgentView />}
         </main>
       </div>
     </div>

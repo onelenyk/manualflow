@@ -59,4 +59,12 @@ export const api = {
   // Templates
   getTemplates: () => fetchJson<any[]>('/templates'),
   getTemplate: (id: string) => fetchJson<any>(`/templates/${id}`),
+
+  // Agent
+  getAgentStatus: () => fetchJson<any>('/agent/status'),
+  installAgent: () => fetchJson<any>('/agent/install', { method: 'POST' }),
+  uninstallAgent: () => fetchJson<any>('/agent/uninstall', { method: 'POST' }),
+  startAgent: () => fetchJson<any>('/agent/start', { method: 'POST' }),
+  stopAgent: () => fetchJson<any>('/agent/stop', { method: 'POST' }),
+  buildAgent: () => fetchJson<any>('/agent/build', { method: 'POST' }),
 };

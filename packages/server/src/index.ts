@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { deviceRoutes } from './routes/devices.js';
 import { recordingRoutes } from './routes/recording.js';
+import { agentRoutes } from './routes/agent.js';
 import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
 import type { RecordingSession } from './recording/recording-session.js';
@@ -29,13 +30,15 @@ export interface AppState {
   activeDevice: string | null;
   scrcpyProcess: import('child_process').ChildProcess | null;
   recordingSession: RecordingSession | null;
+  agentProcess: import('child_process').ChildProcess | null;
 }
 
-const state: AppState = { activeDevice: null, scrcpyProcess: null, recordingSession: null };
+const state: AppState = { activeDevice: null, scrcpyProcess: null, recordingSession: null, agentProcess: null };
 
 app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
 app.use('/api', recordingRoutes(state));
+app.use('/api', agentRoutes(state));
 app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
 
@@ -51,6 +54,7 @@ app.listen(PORT, () => {
 
 process.on('SIGINT', () => {
   state.scrcpyProcess?.kill();
+  state.agentProcess?.kill();
   state.recordingSession?.stop().catch(() => {});
   process.exit(0);
 });
