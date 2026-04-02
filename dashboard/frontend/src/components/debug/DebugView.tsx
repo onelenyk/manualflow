@@ -5,7 +5,7 @@ import { api } from '../../api/client';
 export function DebugView() {
   const { selectedDevice } = useDeviceStore();
   const [tab, setTab] = useState<'getevent' | 'adb' | 'hierarchy' | 'logcat'>('getevent');
-  const [geteventLines, setGeteventLines] = useState<string[]>([]);
+  const [geteventLines, setGeteventLines] = useState<{ raw: string; event?: any }[]>([]);
   const [geteventRunning, setGeteventRunning] = useState(false);
   const [adbCommand, setAdbCommand] = useState('');
   const [adbOutput, setAdbOutput] = useState('');
@@ -36,15 +36,13 @@ export function DebugView() {
       const data = JSON.parse(event.data);
       if (data.type === 'event' && data.event) {
         const e = data.event;
-        const line = `[${e.type}] ${e.text || e.contentDescription || e.className || ''} ${e.resourceId ? `(${e.resourceId})` : ''} ${e.packageName ? `[${e.packageName}]` : ''}`;
+        const line = `[${e.type}] ${e.text || e.contentDescription || e.className || ''}`;
         setGeteventLines(prev => {
-          const next = [...prev, line.trim()];
+          const next = [...prev, { raw: line.trim(), event: e }];
           return next.length > 500 ? next.slice(-500) : next;
         });
       } else if (data.type === 'info' || data.type === 'error') {
-        setGeteventLines(prev => [...prev, `[${data.type}] ${data.message}`]);
-      } else if (data.type === 'raw') {
-        setGeteventLines(prev => [...prev, data.line]);
+        setGeteventLines(prev => [...prev, { raw: `[${data.type}] ${data.message}` }]);
       }
     };
 
@@ -150,15 +148,19 @@ export function DebugView() {
               {geteventRunning && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
               <span className="text-[10px] text-slate-600 ml-auto">{geteventLines.length} events</span>
             </div>
-            <div className="flex-1 overflow-auto p-3 font-mono text-[10px] text-green-400 leading-relaxed">
+            <div className="flex-1 overflow-auto p-3 text-[10px] leading-relaxed">
               {geteventLines.length === 0 ? (
                 <div className="text-slate-600 text-center py-8">
-                  {geteventRunning ? 'Waiting for touch events... tap the device screen' : 'Click Start Capture, then touch the device'}
+                  {geteventRunning ? 'Waiting for events... interact with the device' : 'Click Start Capture, then touch the device'}
                 </div>
               ) : (
-                geteventLines.map((line, i) => (
-                  <div key={i} className={`hover:bg-slate-800/50 px-1 ${line.startsWith('[') ? 'text-yellow-400' : ''}`}>
-                    {line}
+                geteventLines.map((entry, i) => (
+                  <div key={i} className="mb-2 border-b border-slate-800/50 pb-2">
+                    {entry.event ? (
+                      <EventCard event={entry.event} index={i} />
+                    ) : (
+                      <div className="text-yellow-400 font-mono px-1">{entry.raw}</div>
+                    )}
                   </div>
                 ))
               )}
@@ -217,5 +219,115 @@ export function DebugView() {
         )}
       </div>
     </div>
+  );
+}
+
+const typeColors: Record<string, string> = {
+  click: 'bg-blue-500',
+  longClick: 'bg-orange-500',
+  scroll: 'bg-indigo-500',
+  textChanged: 'bg-amber-500',
+  windowChanged: 'bg-purple-500',
+  selected: 'bg-teal-500',
+  focused: 'bg-cyan-500',
+};
+
+function EventCard({ event: e, index }: { event: any; index: number }) {
+  const color = typeColors[e.type] || 'bg-slate-500';
+
+  return (
+    <div className="rounded-lg bg-slate-800/40 p-2">
+      {/* Header: type badge + main identifier */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[9px] text-slate-600 w-4 text-right">#{index + 1}</span>
+        <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${color}`}>
+          {e.type.toUpperCase()}
+        </span>
+        {e.text && <span className="text-[11px] text-white truncate">"{e.text}"</span>}
+        {!e.text && e.contentDescription && (
+          <span className="text-[11px] text-slate-300 truncate">[{e.contentDescription}]</span>
+        )}
+        {!e.text && !e.contentDescription && e.className && (
+          <span className="text-[11px] text-slate-500 truncate">{e.className}</span>
+        )}
+      </div>
+
+      {/* Properties grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] ml-7">
+        {e.resourceId && <Field label="resourceId" value={e.resourceId} color="text-green-400" />}
+        {e.className && <Field label="class" value={e.className} color="text-slate-400" />}
+        {e.contentDescription && <Field label="contentDesc" value={e.contentDescription} color="text-cyan-400" />}
+        {e.packageName && <Field label="package" value={e.packageName} color="text-slate-500" />}
+
+        {e.bounds && (
+          <Field label="bounds" value={`(${e.bounds.left},${e.bounds.top})-(${e.bounds.right},${e.bounds.bottom})`} color="text-slate-400" />
+        )}
+        {e.bounds && (
+          <Field label="center" value={`(${Math.floor((e.bounds.left + e.bounds.right) / 2)}, ${Math.floor((e.bounds.top + e.bounds.bottom) / 2)})`} color="text-yellow-400" />
+        )}
+
+        {/* State flags */}
+        {(e.clickable || e.scrollable || e.editable || e.checkable) && (
+          <div className="col-span-2 flex gap-2 mt-0.5">
+            {e.clickable && <Flag label="clickable" />}
+            {e.scrollable && <Flag label="scrollable" />}
+            {e.editable && <Flag label="editable" />}
+            {e.checkable && <Flag label="checkable" />}
+            {e.checked && <Flag label="checked" active />}
+            {e.focused && <Flag label="focused" active />}
+          </div>
+        )}
+
+        {/* Scroll-specific */}
+        {e.type === 'scroll' && (
+          <>
+            {e.direction && <Field label="direction" value={e.direction} color="text-indigo-300" />}
+            <Field label="scroll" value={`x:${e.scrollX} y:${e.scrollY} / max x:${e.maxScrollX} y:${e.maxScrollY}`} color="text-slate-400" />
+            {e.itemCount > 0 && <Field label="items" value={`${e.fromIndex}-${e.toIndex} of ${e.itemCount}`} color="text-slate-400" />}
+          </>
+        )}
+
+        {/* Text-specific */}
+        {e.type === 'textChanged' && (
+          <>
+            {e.beforeText !== undefined && <Field label="before" value={`"${e.beforeText}"`} color="text-red-400" />}
+            <Field label="after" value={`"${e.text}"`} color="text-green-400" />
+            {e.addedCount > 0 && <Field label="added" value={String(e.addedCount)} color="text-green-400" />}
+            {e.removedCount > 0 && <Field label="removed" value={String(e.removedCount)} color="text-red-400" />}
+          </>
+        )}
+
+        {/* Parent fallback */}
+        {e.parentResourceId && <Field label="parentId" value={e.parentResourceId} color="text-slate-500" />}
+        {e.parentText && <Field label="parentText" value={e.parentText} color="text-slate-500" />}
+
+        {/* Compose extras */}
+        {e.extras && (
+          <div className="col-span-2">
+            <span className="text-slate-600">extras: </span>
+            <span className="text-purple-400">{JSON.stringify(e.extras)}</span>
+          </div>
+        )}
+
+        <Field label="timestamp" value={String(e.timestamp)} color="text-slate-600" />
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="truncate">
+      <span className="text-slate-600">{label}: </span>
+      <span className={`font-mono ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+function Flag({ label, active }: { label: string; active?: boolean }) {
+  return (
+    <span className={`text-[9px] px-1 py-0.5 rounded ${active ? 'bg-green-400/20 text-green-400' : 'bg-slate-700 text-slate-500'}`}>
+      {label}
+    </span>
   );
 }
