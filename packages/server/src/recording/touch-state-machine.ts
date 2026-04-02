@@ -2,10 +2,11 @@ import type { UserAction } from '@maestro-recorder/shared';
 import type { GeteventLine, TouchPhase } from './types.js';
 import type { CoordinateConverter } from './coordinate-converter.js';
 
-const TAP_MAX_DURATION_MS = 200;
-const LONG_PRESS_MIN_DURATION_MS = 500;
-const TAP_MAX_DISTANCE_PX = 20;
+const TAP_MAX_DURATION_MS = 400;     // was 200 — real taps can be 300ms+
+const LONG_PRESS_MIN_DURATION_MS = 600;
+const TAP_MAX_DISTANCE_PX = 50;      // was 20 — finger naturally wiggles 30-40px
 const SCROLL_VERTICAL_THRESHOLD = 0.7;
+const MIN_SWIPE_DISTANCE_PX = 80;    // ignore tiny accidental drags
 
 export class TouchStateMachine {
   private phase: TouchPhase = 'idle';
@@ -60,14 +61,19 @@ export class TouchStateMachine {
 
       // Classify gesture
       if (distance <= TAP_MAX_DISTANCE_PX) {
-        // Stationary touch
+        // Stationary touch — tap or long press
         if (durationMs >= LONG_PRESS_MIN_DURATION_MS) {
           return { type: 'longPress', x: startX, y: startY, durationMs, timestampMs };
         }
         return { type: 'tap', x: startX, y: startY, timestampMs };
       }
 
-      // Movement detected — swipe or scroll
+      // Small movement but not enough for a real swipe — treat as tap
+      if (distance < MIN_SWIPE_DISTANCE_PX) {
+        return { type: 'tap', x: startX, y: startY, timestampMs };
+      }
+
+      // Clear movement — swipe or scroll
       const verticalRatio = Math.abs(dy) / (Math.abs(dx) + Math.abs(dy));
 
       if (verticalRatio >= SCROLL_VERTICAL_THRESHOLD) {
