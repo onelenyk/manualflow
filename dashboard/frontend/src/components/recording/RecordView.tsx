@@ -11,12 +11,12 @@ export function RecordView() {
   return (
     <div className="flex h-full gap-4">
       {/* Left: Device screen */}
-      <div className="flex flex-col min-h-0 flex-1 max-w-[500px]">
+      <div className="flex min-h-0 shrink-0">
         <ScreenMirror />
       </div>
 
       {/* Right: Controls + Actions */}
-      <div className="flex flex-col w-[320px] shrink-0 gap-3">
+      <div className="flex flex-col flex-1 min-w-[280px] max-w-[400px] gap-3">
         {/* Recording controls card */}
         <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
           <div className="flex items-center justify-between mb-3">

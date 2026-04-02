@@ -13,7 +13,7 @@ export function ScreenMirror() {
 
   if (!selectedDevice) {
     return (
-      <div className="flex-1 rounded-xl bg-slate-900/40 border border-slate-800/50 flex items-center justify-center">
+      <div className="h-full w-[280px] rounded-xl bg-slate-900/40 border border-slate-800/50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-slate-700 text-3xl mb-2">&#9671;</div>
           <div className="text-slate-600 text-xs">Select a device to mirror</div>
@@ -22,13 +22,17 @@ export function ScreenMirror() {
     );
   }
 
+  // ws-scrcpy renders phone at fixed size (~200px wide + 40px toolbar).
+  // We make the iframe much wider but only show the right portion where the phone is.
   return (
-    <iframe
-      key={selectedDevice}
-      src={buildStreamUrl(selectedDevice)}
-      className="flex-1 w-full rounded-xl border border-slate-800/50 bg-black"
-      style={{ minHeight: 0 }}
-      allow="fullscreen"
-    />
+    <div className="h-full w-[280px] shrink-0 overflow-hidden rounded-xl border border-slate-800/50 bg-black relative">
+      <iframe
+        key={selectedDevice}
+        src={buildStreamUrl(selectedDevice)}
+        className="absolute top-0 right-0 border-0"
+        style={{ width: '1200px', height: '100%' }}
+        allow="fullscreen"
+      />
+    </div>
   );
 }
