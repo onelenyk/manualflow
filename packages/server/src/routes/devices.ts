@@ -60,7 +60,9 @@ export function deviceRoutes(state: AppState) {
       '-s', serial,
       '--max-size=800',
       '--window-title=MaestroRecorder',
-    ], { stdio: 'ignore', detached: false });
+      '--show-touches',
+      '--always-on-top',
+    ], { stdio: 'inherit' });
 
     proc.on('close', () => {
       if (state.scrcpyProcess === proc) {
