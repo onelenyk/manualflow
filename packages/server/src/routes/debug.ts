@@ -19,12 +19,12 @@ export function debugRoutes(state: AppState) {
       'Connection': 'keep-alive',
     });
 
-    // Discover touch device first
+    // Discover touch device using same logic as getevent-parser
     let devicePath = '/dev/input/event3'; // default
     try {
-      const lp = await adbExec('-s', serial, 'shell', 'getevent', '-lp');
-      const match = lp.match(/add device \d+:\s+(\/dev\/input\/event\d+)[\s\S]*?ABS_MT_POSITION_X/);
-      if (match) devicePath = match[1];
+      const { discoverInputDevice } = await import('../recording/getevent-parser.js');
+      const device = await discoverInputDevice(serial);
+      devicePath = device.devicePath;
     } catch {}
 
     res.write(`data: ${JSON.stringify({ type: 'info', message: `Streaming from ${devicePath}` })}\n\n`);
@@ -80,9 +80,16 @@ export function debugRoutes(state: AppState) {
     if (!serial) return res.status(400).json({ error: 'No device selected' });
 
     try {
-      await adbExec('-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml');
-      const xml = await adbExec('-s', serial, 'shell', 'cat', '/sdcard/window_dump.xml');
-      res.json({ xml });
+      // Try dumping via accessibility service
+      const result = await adbExec('-s', serial, 'exec-out', 'uiautomator', 'dump', '/dev/tty').catch(() => '');
+      if (result && result.includes('<')) {
+        res.json({ xml: result });
+      } else {
+        // Fallback: dump to file then read
+        await adbExec('-s', serial, 'shell', 'uiautomator', 'dump', '/data/local/tmp/ui.xml').catch(() => {});
+        const xml = await adbExec('-s', serial, 'shell', 'cat', '/data/local/tmp/ui.xml').catch(() => 'Dump failed');
+        res.json({ xml });
+      }
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -94,7 +101,7 @@ export function debugRoutes(state: AppState) {
     if (!serial) return res.status(400).json({ error: 'No device selected' });
 
     try {
-      const output = await adbExec('-s', serial, 'shell', 'logcat', '-d', '-t', '50', '-s', 'MaestroHttpServer:*');
+      const output = await adbExec('-s', serial, 'shell', 'logcat', '-d', '-t', '50');
       res.json({ output });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
