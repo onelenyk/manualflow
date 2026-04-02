@@ -4,6 +4,8 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { deviceRoutes } from './routes/devices.js';
+import { yamlRoutes } from './routes/yaml.js';
+import { templatesRoutes } from './routes/templates.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
@@ -30,6 +32,8 @@ const state: AppState = { activeDevice: null, scrcpyProcess: null };
 
 app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
+app.use('/api', yamlRoutes());
+app.use('/api', templatesRoutes());
 
 const frontendDist = path.resolve(__dirname, '../../../dashboard/frontend/dist');
 app.use(express.static(frontendDist));
