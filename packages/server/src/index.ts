@@ -9,7 +9,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -24,14 +23,14 @@ export function adbExec(...args: string[]): Promise<string> {
 
 export interface AppState {
   activeDevice: string | null;
+  scrcpyProcess: import('child_process').ChildProcess | null;
 }
 
-const state: AppState = { activeDevice: null };
+const state: AppState = { activeDevice: null, scrcpyProcess: null };
 
 app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
 
-// Serve frontend
 const frontendDist = path.resolve(__dirname, '../../../dashboard/frontend/dist');
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
@@ -40,4 +39,9 @@ app.get('*', (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`MaestroRecorder dashboard: http://localhost:${PORT}`);
+});
+
+process.on('SIGINT', () => {
+  state.scrcpyProcess?.kill();
+  process.exit(0);
 });

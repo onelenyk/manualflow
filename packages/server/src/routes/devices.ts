@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import { spawn, execFile } from 'child_process';
 import { adbExec, type AppState } from '../index.js';
 
 export function deviceRoutes(state: AppState) {
   const router = Router();
+
+  // --- Device listing ---
 
   router.get('/devices', async (_req, res) => {
     try {
@@ -42,7 +45,72 @@ export function deviceRoutes(state: AppState) {
     res.json({ selected: req.params.serial });
   });
 
-  // Touch input via ADB
+  // --- scrcpy mirror management ---
+
+  router.post('/devices/:serial/mirror', (req, res) => {
+    const serial = req.params.serial;
+
+    // Kill existing scrcpy if running
+    if (state.scrcpyProcess) {
+      state.scrcpyProcess.kill();
+      state.scrcpyProcess = null;
+    }
+
+    const proc = spawn('scrcpy', [
+      '-s', serial,
+      '--max-size=800',
+      '--window-title=MaestroRecorder',
+    ], { stdio: 'ignore', detached: false });
+
+    proc.on('close', () => {
+      if (state.scrcpyProcess === proc) {
+        state.scrcpyProcess = null;
+      }
+    });
+
+    proc.on('error', (err) => {
+      console.error('scrcpy error:', err.message);
+      state.scrcpyProcess = null;
+    });
+
+    state.scrcpyProcess = proc;
+    res.json({ status: 'launched', pid: proc.pid });
+  });
+
+  router.post('/devices/:serial/mirror/stop', (_req, res) => {
+    if (state.scrcpyProcess) {
+      state.scrcpyProcess.kill();
+      state.scrcpyProcess = null;
+      res.json({ status: 'stopped' });
+    } else {
+      res.json({ status: 'not_running' });
+    }
+  });
+
+  router.get('/devices/:serial/mirror/status', (_req, res) => {
+    res.json({ running: state.scrcpyProcess !== null });
+  });
+
+  // --- Screenshot ---
+
+  router.get('/devices/:serial/screenshot', (req, res) => {
+    const serial = req.params.serial;
+    const proc = execFile('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], {
+      maxBuffer: 10 * 1024 * 1024,
+      encoding: 'buffer' as any,
+    }, (err, stdout) => {
+      if (err || !stdout || (stdout as any).length === 0) {
+        res.status(500).json({ error: 'Screenshot failed' });
+        return;
+      }
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'no-cache');
+      res.send(stdout);
+    });
+  });
+
+  // --- Touch input ---
+
   router.post('/devices/:serial/tap', async (req, res) => {
     const { x, y } = req.body;
     try {
@@ -67,9 +135,8 @@ export function deviceRoutes(state: AppState) {
   });
 
   router.post('/devices/:serial/key', async (req, res) => {
-    const { keycode } = req.body;
     try {
-      await adbExec('-s', req.params.serial, 'shell', 'input', 'keyevent', String(keycode));
+      await adbExec('-s', req.params.serial, 'shell', 'input', 'keyevent', String(req.body.keycode));
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -77,9 +144,8 @@ export function deviceRoutes(state: AppState) {
   });
 
   router.post('/devices/:serial/text', async (req, res) => {
-    const { text } = req.body;
     try {
-      await adbExec('-s', req.params.serial, 'shell', 'input', 'text', text.replace(/ /g, '%s'));
+      await adbExec('-s', req.params.serial, 'shell', 'input', 'text', req.body.text.replace(/ /g, '%s'));
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

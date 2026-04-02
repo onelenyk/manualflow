@@ -17,6 +17,10 @@ export const api = {
   getDevices: () => fetchJson<any[]>('/devices'),
   getDeviceInfo: (serial: string) => fetchJson<any>(`/devices/${serial}/info`),
   selectDevice: (serial: string) => fetchJson<any>(`/devices/${serial}/select`, { method: 'POST' }),
+  launchMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror`, { method: 'POST' }),
+  stopMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/stop`, { method: 'POST' }),
+  getMirrorStatus: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/status`),
+  screenshotUrl: (serial: string) => `/api/devices/${serial}/screenshot?t=${Date.now()}`,
 
   // Recording
   startRecording: (body: { deviceSerial?: string; appId?: string }) =>
