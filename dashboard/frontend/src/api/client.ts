@@ -51,6 +51,12 @@ export const api = {
   // YAML
   parseYaml: (yaml: string) =>
     fetchJson<any>('/yaml/parse', { method: 'POST', body: JSON.stringify({ yaml }) }),
+  validateYaml: (yaml: string) =>
+    fetchJson<any>('/yaml/validate', { method: 'POST', body: JSON.stringify({ yaml }) }),
   generateYaml: (appId: string, commands: any[]) =>
     fetchJson<any>('/yaml/generate', { method: 'POST', body: JSON.stringify({ appId, commands }) }),
+
+  // Templates
+  getTemplates: () => fetchJson<any[]>('/templates'),
+  getTemplate: (id: string) => fetchJson<any>(`/templates/${id}`),
 };

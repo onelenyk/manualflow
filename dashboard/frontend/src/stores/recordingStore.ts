@@ -10,6 +10,7 @@ interface RecordingStore {
   yaml: string;
   startTime: number | null;
   error: string | null;
+  eventSource: EventSource | null;
   startRecording: (deviceSerial?: string, appId?: string) => Promise<void>;
   stopRecording: () => Promise<void>;
   addCommand: (command: CommandDto) => void;
@@ -17,27 +18,45 @@ interface RecordingStore {
   reset: () => void;
 }
 
-export const useRecordingStore = create<RecordingStore>((set) => ({
+export const useRecordingStore = create<RecordingStore>((set, get) => ({
   state: 'idle',
   commands: [],
   yaml: '',
   startTime: null,
   error: null,
+  eventSource: null,
 
   startRecording: async (deviceSerial?: string, appId?: string) => {
     set({ state: 'recording', commands: [], yaml: '', startTime: Date.now(), error: null });
     try {
       await api.startRecording({ deviceSerial, appId });
+
+      // Open SSE connection for real-time command streaming
+      const es = new EventSource('/api/recording/events');
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'command' && data.command) {
+            get().addCommand(data.command);
+          }
+        } catch {}
+      };
+      es.onerror = () => {
+        // SSE auto-reconnects
+      };
+      set({ eventSource: es });
     } catch (e: any) {
       set({ state: 'idle', error: e.message });
     }
   },
 
   stopRecording: async () => {
-    set({ state: 'stopping' });
+    // Close SSE first
+    get().eventSource?.close();
+    set({ state: 'stopping', eventSource: null });
     try {
       const result = await api.stopRecording();
-      set({ state: 'idle', yaml: result.yaml, commands: result.commands || [] });
+      set({ state: 'idle', yaml: result.yaml });
     } catch (e: any) {
       set({ state: 'idle', error: e.message });
     }
@@ -49,5 +68,8 @@ export const useRecordingStore = create<RecordingStore>((set) => ({
 
   setYaml: (yaml: string) => set({ yaml }),
 
-  reset: () => set({ state: 'idle', commands: [], yaml: '', startTime: null, error: null }),
+  reset: () => {
+    get().eventSource?.close();
+    set({ state: 'idle', commands: [], yaml: '', startTime: null, error: null, eventSource: null });
+  },
 }));

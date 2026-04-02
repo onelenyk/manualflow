@@ -14,6 +14,11 @@ export interface CommandDto {
   type: string;
   selector?: SelectorDto;
   text?: string;
+  start?: string;
+  end?: string;
+  direction?: string;
+  key?: string;
+  url?: string;
 }
 
 export interface SelectorDto {
