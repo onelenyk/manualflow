@@ -60,7 +60,7 @@ export function agentRoutes(state: AppState) {
     }
 
     try {
-      const output = await adbExec('-s', serial, 'install', '-r', '-t', APK_PATH);
+      const output = await adbExec('-s', serial, 'install', '-r', '-t', '-g', '--bypass-low-target-sdk-block', APK_PATH);
       res.json({ status: 'installed', output });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
