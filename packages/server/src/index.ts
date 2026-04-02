@@ -1,17 +1,14 @@
 import express from 'express';
-import expressWs from 'express-ws';
 import cors from 'cors';
 import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { deviceRoutes } from './routes/devices.js';
-import { screenRoutes } from './routes/screen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
 
 const app = express();
-const wsApp = expressWs(app);
 
 app.use(cors());
 app.use(express.json());
@@ -31,14 +28,8 @@ export interface AppState {
 
 const state: AppState = { activeDevice: null };
 
-// Health
 app.get('/health', (_req, res) => res.send('OK'));
-
-// API routes
 app.use('/api', deviceRoutes(state));
-
-// WebSocket routes
-screenRoutes(wsApp.app, state);
 
 // Serve frontend
 const frontendDist = path.resolve(__dirname, '../../../dashboard/frontend/dist');

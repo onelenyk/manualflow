@@ -11,7 +11,7 @@ interface SidebarProps {
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
-    <aside className="w-48 bg-slate-900 border-r border-slate-700 flex flex-col p-3 gap-1">
+    <aside className="w-40 bg-slate-900 border-r border-slate-700 flex flex-col p-3 gap-1">
       <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
         Navigation
       </div>
