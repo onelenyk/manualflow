@@ -1,7 +1,7 @@
 const navItems = [
-  { id: 'record', label: 'Record', icon: '⏺' },
-  { id: 'library', label: 'Library', icon: '📁' },
-  { id: 'runner', label: 'Runner', icon: '▶' },
+  { id: 'record', label: 'Record', icon: 'R' },
+  { id: 'library', label: 'Library', icon: 'L' },
+  { id: 'runner', label: 'Runner', icon: 'P' },
 ];
 
 interface SidebarProps {
@@ -11,22 +11,19 @@ interface SidebarProps {
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
-    <aside className="w-40 bg-slate-900 border-r border-slate-700 flex flex-col p-3 gap-1">
-      <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
-        Navigation
-      </div>
+    <aside className="w-12 bg-slate-900/80 border-r border-slate-800 flex flex-col items-center py-3 gap-2">
       {navItems.map((item) => (
         <button
           key={item.id}
           onClick={() => onViewChange(item.id)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          title={item.label}
+          className={`w-9 h-9 rounded-lg text-xs font-bold flex items-center justify-center transition-all ${
             activeView === item.id
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+              : 'text-slate-500 hover:text-white hover:bg-slate-800'
           }`}
         >
-          <span>{item.icon}</span>
-          {item.label}
+          {item.icon}
         </button>
       ))}
     </aside>

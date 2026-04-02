@@ -14,10 +14,10 @@ export function MainLayout() {
         <main className="flex-1 overflow-hidden p-4">
           {activeView === 'record' && <RecordView />}
           {activeView === 'library' && (
-            <div className="text-slate-400 text-center mt-20">Flow Library — coming soon</div>
+            <div className="text-slate-600 text-sm text-center mt-32">Flow Library</div>
           )}
           {activeView === 'runner' && (
-            <div className="text-slate-400 text-center mt-20">Test Runner — coming soon</div>
+            <div className="text-slate-600 text-sm text-center mt-32">Test Runner</div>
           )}
         </main>
       </div>

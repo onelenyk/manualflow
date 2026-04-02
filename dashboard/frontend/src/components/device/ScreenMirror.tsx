@@ -13,8 +13,11 @@ export function ScreenMirror() {
 
   if (!selectedDevice) {
     return (
-      <div className="flex-1 bg-slate-800/50 rounded-xl flex items-center justify-center text-slate-500 text-sm border border-slate-700/50">
-        Select a device to start mirroring
+      <div className="flex-1 rounded-xl bg-slate-900/40 border border-slate-800/50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-slate-700 text-3xl mb-2">&#9671;</div>
+          <div className="text-slate-600 text-xs">Select a device to mirror</div>
+        </div>
       </div>
     );
   }
@@ -23,8 +26,8 @@ export function ScreenMirror() {
     <iframe
       key={selectedDevice}
       src={buildStreamUrl(selectedDevice)}
-      className="flex-1 w-full rounded-xl border border-slate-700/50"
-      style={{ minHeight: 0, background: '#000' }}
+      className="flex-1 w-full rounded-xl border border-slate-800/50 bg-black"
+      style={{ minHeight: 0 }}
       allow="fullscreen"
     />
   );
