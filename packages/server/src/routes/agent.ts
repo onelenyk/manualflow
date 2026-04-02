@@ -64,7 +64,13 @@ export function agentRoutes(state: AppState) {
       await adbExec('-s', serial, 'shell', 'settings', 'put', 'global', 'verifier_verify_adb_installs', '0').catch(() => {});
       await adbExec('-s', serial, 'shell', 'settings', 'put', 'global', 'package_verifier_enable', '0').catch(() => {});
 
-      const output = await adbExec('-s', serial, 'install', '-r', '-t', '-g', '--bypass-low-target-sdk-block', APK_PATH);
+      // Try with --bypass-low-target-sdk-block first (Android 14+), fall back without it
+      let output: string;
+      try {
+        output = await adbExec('-s', serial, 'install', '-r', '-t', '-g', '--bypass-low-target-sdk-block', APK_PATH);
+      } catch {
+        output = await adbExec('-s', serial, 'install', '-r', '-t', '-g', APK_PATH);
+      }
 
       // Mark as trusted installer to prevent future warnings
       await adbExec('-s', serial, 'shell', 'pm', 'set-installer', AGENT_PKG, 'com.android.vending').catch(() => {});
