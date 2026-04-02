@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { deviceRoutes } from './routes/devices.js';
 import { recordingRoutes } from './routes/recording.js';
 import { agentRoutes } from './routes/agent.js';
+import { debugRoutes } from './routes/debug.js';
 import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
 import type { RecordingSession } from './recording/recording-session.js';
@@ -39,6 +40,7 @@ app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
 app.use('/api', recordingRoutes(state));
 app.use('/api', agentRoutes(state));
+app.use('/api', debugRoutes(state));
 app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
 
