@@ -9,7 +9,7 @@ export function RecordView() {
 
   return (
     <div className="flex flex-col h-full gap-3">
-      {/* Top bar: title + device info + record button */}
+      {/* Top bar */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-white">Record Flow</h2>
@@ -18,23 +18,20 @@ export function RecordView() {
         <RecordingControls />
       </div>
 
-      {/* Main content: device mirror + actions panel */}
-      <div className="flex gap-3 flex-1 min-h-0">
-        {/* Left: Device screen (takes most space) */}
-        <div className="flex-[3] flex flex-col min-h-0 min-w-0">
+      {/* Main: device mirror (center) + actions (right) */}
+      <div className="flex gap-3 flex-1 min-h-0 justify-center">
+        {/* Device screen — constrained width to avoid grey waste */}
+        <div className="flex flex-col min-h-0 w-[320px] shrink-0">
           <ScreenMirror />
         </div>
 
-        {/* Right: Actions panel */}
-        <div className="flex-[1] flex flex-col min-w-[280px] max-w-[360px]">
-          <div className="flex flex-col gap-2 flex-1 min-h-0">
-            <h3 className="text-sm font-medium text-slate-400 shrink-0">Actions</h3>
-            <div className="flex-1 overflow-auto">
-              <ActionFeed />
-            </div>
+        {/* Actions panel */}
+        <div className="flex flex-col w-[300px] shrink-0">
+          <h3 className="text-sm font-medium text-slate-400 mb-2 shrink-0">Actions</h3>
+          <div className="flex-1 overflow-auto">
+            <ActionFeed />
           </div>
 
-          {/* YAML output */}
           {yaml && (
             <div className="mt-3 shrink-0">
               <h3 className="text-sm font-medium text-slate-400 mb-2">Generated YAML</h3>
