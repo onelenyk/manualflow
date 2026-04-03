@@ -1,7 +1,6 @@
 const navItems = [
   { id: 'record', label: 'Record', icon: 'R' },
   { id: 'agent', label: 'Agent', icon: 'A' },
-  { id: 'debug', label: 'Debug', icon: 'D' },
 ];
 
 interface SidebarProps {

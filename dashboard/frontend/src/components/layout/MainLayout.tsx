@@ -3,7 +3,6 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { RecordView } from '../recording/RecordView';
 import { AgentView } from '../agent/AgentView';
-import { DebugView } from '../debug/DebugView';
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState('record');
@@ -16,7 +15,6 @@ export function MainLayout() {
         <main className="flex-1 overflow-hidden p-4">
           {activeView === 'record' && <RecordView />}
           {activeView === 'agent' && <AgentView />}
-          {activeView === 'debug' && <DebugView />}
         </main>
       </div>
     </div>
