@@ -18,6 +18,7 @@ export class RecordingSession extends EventEmitter {
   private agentEventStream: EventEmitter | null = null;
   private yamlGenerator = new YamlGenerator();
   private _commands: MaestroCommand[] = [];
+  private keyboardPollTimer: NodeJS.Timeout | null = null;
 
   get commands(): MaestroCommand[] { return this._commands; }
 
@@ -107,6 +108,15 @@ export class RecordingSession extends EventEmitter {
       // Agent stream not available — continue without it
     }
 
+    // 10. Poll keyboard state to filter keyboard taps
+    this.keyboardPollTimer = setInterval(async () => {
+      try {
+        const output = await this.adbExec('shell', 'dumpsys', 'input_method');
+        const isOpen = output.includes('mInputShown=true');
+        this.combiner?.setKeyboardOpen(isOpen);
+      } catch {}
+    }, 500);
+
     this.emit('status', 'recording');
   }
 
@@ -118,6 +128,11 @@ export class RecordingSession extends EventEmitter {
   async stop(): Promise<{ yaml: string; commands: MaestroCommand[] }> {
     // Flush pending text input
     this.combiner?.flush();
+
+    if (this.keyboardPollTimer) {
+      clearInterval(this.keyboardPollTimer);
+      this.keyboardPollTimer = null;
+    }
 
     this.geteventStream?.stop();
     this.geteventStream = null;

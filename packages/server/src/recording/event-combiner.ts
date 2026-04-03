@@ -25,19 +25,31 @@ interface AccessibilityEvent {
  *
  * Emits: 'command', 'element', 'action', 'raw'
  */
+// Generic names to filter from assertVisible
+const NOISE_NAMES = new Set([
+  'FrameLayout', 'LinearLayout', 'View', 'ViewGroup', 'ComposeView',
+  'normal keyboard', 'Application icon', 'Keyboard', 'DecorView',
+  'FrameLayout', 'RelativeLayout', 'ConstraintLayout',
+]);
+
 export class EventCombiner extends EventEmitter {
   private agent: AgentClient;
   private screenWidth: number;
   private screenHeight: number;
 
-  // Dedup: track recent getevent taps to avoid duplicate accessibility clicks
+  // Dedup: track recent getevent taps
   private recentTaps: { timestamp: number; x: number; y: number }[] = [];
 
   // Text input accumulation
   private pendingText: { resourceId: string; text: string; timer: NodeJS.Timeout } | null = null;
 
-  // Track last window for assertVisible
+  // Track last window for assertVisible dedup
   private lastWindowPackage: string = '';
+  private lastAssertText: string = '';
+
+  // Keyboard state: when true, ignore taps in bottom portion of screen
+  private keyboardOpen: boolean = false;
+  private lastEditableTapTime: number = 0;
 
   constructor(agent: AgentClient, screenWidth: number, screenHeight: number) {
     super();
@@ -46,8 +58,23 @@ export class EventCombiner extends EventEmitter {
     this.screenHeight = screenHeight;
   }
 
+  /** Set keyboard state (called from recording session polling) */
+  setKeyboardOpen(open: boolean): void {
+    this.keyboardOpen = open;
+  }
+
   /** Handle a gesture from getevent + TouchStateMachine */
   async onUserAction(action: UserAction): Promise<void> {
+    // Filter keyboard area taps
+    if (this.keyboardOpen && (action.type === 'tap' || action.type === 'longPress')) {
+      const y = action.type === 'tap' ? action.y : action.y;
+      const keyboardThreshold = this.screenHeight * 0.58; // keyboard starts around 58% down
+      if (y > keyboardThreshold) {
+        // This is a keyboard key tap — skip it
+        return;
+      }
+    }
+
     this.emit('action', action);
 
     switch (action.type) {
@@ -98,6 +125,7 @@ export class EventCombiner extends EventEmitter {
 
     // Text input detection: if tapped on editable field, poll for text changes
     if (element && (element.editable || element.className?.includes('EditText') || element.className?.includes('TextField'))) {
+      this.lastEditableTapTime = Date.now();
       this.pollForTextInput(action.x, action.y, element.text || '');
     }
   }
@@ -161,23 +189,29 @@ export class EventCombiner extends EventEmitter {
   private handleWindowChanged(event: AccessibilityEvent) {
     const pkg = event.packageName || '';
 
+    // Skip system/launcher packages
+    if (!pkg || pkg.includes('launcher') || pkg.includes('systemui') || pkg.includes('inputmethod')) return;
+
     // Skip duplicate window events for same package
     if (pkg === this.lastWindowPackage) return;
-    if (!pkg || pkg === 'com.google.android.apps.nexuslauncher') return;
-
     this.lastWindowPackage = pkg;
 
-    // Extract screen name from className or text
+    // Extract screen name
     const screenName = event.text ||
       event.className?.split('.')?.pop() ||
-      pkg.split('.').pop() || '';
+      '';
 
-    if (screenName) {
-      this.emitCommand({
-        type: 'assertVisible',
-        selector: { kind: 'text', text: screenName },
-      });
-    }
+    // Filter out noise names
+    if (!screenName || NOISE_NAMES.has(screenName)) return;
+
+    // Skip if same as last assert
+    if (screenName === this.lastAssertText) return;
+    this.lastAssertText = screenName;
+
+    this.emitCommand({
+      type: 'assertVisible',
+      selector: { kind: 'text', text: screenName },
+    });
   }
 
   private handleAccessibilityClick(event: AccessibilityEvent) {
