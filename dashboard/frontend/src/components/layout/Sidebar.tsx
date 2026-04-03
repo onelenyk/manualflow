@@ -1,7 +1,5 @@
 const navItems = [
   { id: 'record', label: 'Record', icon: 'R' },
-  { id: 'library', label: 'Library', icon: 'L' },
-  { id: 'runner', label: 'Validator', icon: 'V' },
   { id: 'agent', label: 'Agent', icon: 'A' },
   { id: 'debug', label: 'Debug', icon: 'D' },
 ];
