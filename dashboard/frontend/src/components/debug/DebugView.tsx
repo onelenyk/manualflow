@@ -4,9 +4,10 @@ import { api } from '../../api/client';
 
 export function DebugView() {
   const { selectedDevice } = useDeviceStore();
-  const [tab, setTab] = useState<'getevent' | 'adb' | 'hierarchy' | 'logcat'>('getevent');
+  const [tab, setTab] = useState<'getevent' | 'tree' | 'adb' | 'hierarchy' | 'logcat'>('tree');
   const [geteventLines, setGeteventLines] = useState<{ raw: string; event?: any }[]>([]);
   const [geteventRunning, setGeteventRunning] = useState(false);
+  const [treeData, setTreeData] = useState<any[]>([]);
   const [adbCommand, setAdbCommand] = useState('');
   const [adbOutput, setAdbOutput] = useState('');
   const [hierarchyXml, setHierarchyXml] = useState('');
@@ -104,7 +105,20 @@ export function DebugView() {
     );
   }
 
+  const fetchTree = async () => {
+    setLoading(true);
+    try {
+      const result = await fetch('/api/debug/tree').then(r => r.json());
+      if (Array.isArray(result)) setTreeData(result);
+      else setTreeData([]);
+    } catch {
+      setTreeData([]);
+    }
+    setLoading(false);
+  };
+
   const tabs = [
+    { id: 'tree' as const, label: 'Screen Tree' },
     { id: 'getevent' as const, label: 'Device Events' },
     { id: 'adb' as const, label: 'ADB Shell' },
     { id: 'hierarchy' as const, label: 'UI Hierarchy' },
@@ -130,6 +144,65 @@ export function DebugView() {
 
       {/* Content */}
       <div className="flex-1 min-h-0 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-col">
+        {tab === 'tree' && (
+          <>
+            <div className="flex items-center gap-2 p-3 border-b border-slate-800 shrink-0">
+              <button onClick={fetchTree} disabled={loading} className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg">
+                {loading ? 'Loading...' : 'Dump Screen Tree'}
+              </button>
+              <span className="text-[10px] text-slate-600">{treeData.length} elements</span>
+            </div>
+            <div className="flex-1 overflow-auto p-3">
+              {treeData.length === 0 ? (
+                <div className="text-slate-600 text-xs text-center py-8">Click "Dump Screen Tree" to capture current screen elements</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {treeData.map((node: any, i: number) => {
+                    const hasId = !!node.resourceId;
+                    const hasText = !!node.text;
+                    const hasDesc = !!node.contentDescription;
+                    const isInteractive = node.clickable || node.editable || node.scrollable;
+                    const isEmpty = !hasId && !hasText && !hasDesc;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2 text-[10px] ${
+                          isInteractive ? 'bg-slate-800/60 border border-slate-700/50' : 'bg-slate-800/20'
+                        } ${isEmpty ? 'opacity-40' : ''}`}
+                      >
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-slate-600 w-5 text-right shrink-0">#{i}</span>
+                          <span className="text-slate-500 font-mono truncate">{node.className?.split('.').pop() || '?'}</span>
+                          {hasText && <span className="text-white truncate">"{node.text}"</span>}
+                          {!hasText && hasDesc && <span className="text-cyan-400 truncate">[{node.contentDescription}]</span>}
+                          {isInteractive && (
+                            <div className="flex gap-1 ml-auto shrink-0">
+                              {node.clickable && <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1 rounded">click</span>}
+                              {node.editable && <span className="text-[8px] bg-amber-500/20 text-amber-400 px-1 rounded">edit</span>}
+                              {node.scrollable && <span className="text-[8px] bg-indigo-500/20 text-indigo-400 px-1 rounded">scroll</span>}
+                            </div>
+                          )}
+                        </div>
+                        {(hasId || node.bounds) && (
+                          <div className="flex gap-3 ml-7 text-[9px]">
+                            {hasId && <span><span className="text-slate-600">id:</span> <span className="text-green-400 font-mono">{node.resourceId}</span></span>}
+                            {node.bounds && (
+                              <span className="text-slate-600">
+                                ({node.bounds.left},{node.bounds.top})-({node.bounds.right},{node.bounds.bottom})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {tab === 'getevent' && (
           <>
             <div className="flex items-center gap-2 p-3 border-b border-slate-800 shrink-0">

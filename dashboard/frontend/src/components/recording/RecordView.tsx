@@ -169,15 +169,29 @@ function ParsedTab({ actions }: { actions: any[] }) {
   const colors: Record<string, string> = { tap: 'bg-blue-500', swipe: 'bg-teal-500', longPress: 'bg-orange-500', scroll: 'bg-indigo-500' };
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       {actions.map((a, i) => (
-        <div key={i} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg bg-slate-800/30">
-          <span className="text-slate-600 w-4 text-right">#{i+1}</span>
-          <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${colors[a.type] || 'bg-slate-500'}`}>{a.type.toUpperCase()}</span>
-          {a.type === 'tap' && <span className="text-yellow-400 font-mono">({a.x}, {a.y})</span>}
-          {a.type === 'swipe' && <span className="text-yellow-400 font-mono">({a.startX},{a.startY}) → ({a.endX},{a.endY})</span>}
-          {a.type === 'scroll' && <span className="text-indigo-300 font-mono">{a.direction}</span>}
-          {a.type === 'longPress' && <span className="text-yellow-400 font-mono">({a.x}, {a.y}) {Math.round(a.durationMs)}ms</span>}
+        <div key={i} className="rounded-lg bg-slate-800/30 p-2">
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-slate-600 w-4 text-right">#{i+1}</span>
+            <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${colors[a.type] || 'bg-slate-500'}`}>{a.type.toUpperCase()}</span>
+            {a.type === 'tap' && <span className="text-yellow-400 font-mono">({a.x}, {a.y})</span>}
+            {a.type === 'swipe' && <span className="text-yellow-400 font-mono">({a.startX},{a.startY}) → ({a.endX},{a.endY})</span>}
+            {a.type === 'scroll' && <span className="text-indigo-300 font-mono">{a.direction}</span>}
+            {a.type === 'longPress' && <span className="text-yellow-400 font-mono">({a.x}, {a.y}) {Math.round(a.durationMs)}ms</span>}
+          </div>
+          {a.debug && (
+            <div className="ml-7 mt-1 text-[9px] space-y-0.5">
+              <div className="text-slate-500 italic">{a.debug.reason}</div>
+              <div className="flex gap-3 text-slate-600">
+                <span>dist: <span className="text-slate-400">{a.debug.endDistance}px</span></span>
+                <span>maxDist: <span className="text-slate-400">{a.debug.maxDistFromStart}px</span></span>
+                <span>dur: <span className="text-slate-400">{a.debug.durationMs}ms</span></span>
+                <span>vel: <span className="text-slate-400">{a.debug.velocity}</span></span>
+                <span>vert: <span className="text-slate-400">{a.debug.verticalRatio}</span></span>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

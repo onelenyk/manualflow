@@ -109,59 +109,68 @@ export class TouchStateMachine {
       const velocity = durationMs > 0 ? endDistance / durationMs : 0;
 
       const timestampMs = Math.floor(this.downTimestamp * 1000);
+      const verticalRatio = (Math.abs(dx) + Math.abs(dy)) > 0
+        ? Math.abs(dy) / (Math.abs(dx) + Math.abs(dy)) : 0;
+
       this.phase = 'idle';
+
+      // Build debug info for every classification
+      const mkDebug = (reason: string) => ({
+        durationMs: Math.round(durationMs),
+        endDistance: Math.round(endDistance),
+        maxDistFromStart: Math.round(maxDistPx),
+        velocity: Math.round(velocity * 1000) / 1000,
+        verticalRatio: Math.round(verticalRatio * 100) / 100,
+        reason,
+      });
 
       // === CLASSIFICATION ===
 
-      // 1. If finger never moved far from start → TAP or LONG_PRESS
+      // 1. Finger never moved far from start → TAP or LONG_PRESS
       if (maxDistPx <= TAP_MAX_DISTANCE_PX) {
         if (durationMs >= LONG_PRESS_MIN_DURATION_MS) {
-          return { type: 'longPress', x: startX, y: startY, durationMs, timestampMs };
+          return { type: 'longPress', x: startX, y: startY, durationMs, timestampMs, debug: mkDebug(`maxDist ${Math.round(maxDistPx)}px <= ${TAP_MAX_DISTANCE_PX}px + duration ${Math.round(durationMs)}ms >= ${LONG_PRESS_MIN_DURATION_MS}ms`) };
         }
-        return { type: 'tap', x: startX, y: startY, timestampMs };
+        return { type: 'tap', x: startX, y: startY, timestampMs, debug: mkDebug(`maxDist ${Math.round(maxDistPx)}px <= ${TAP_MAX_DISTANCE_PX}px threshold`) };
       }
 
-      // 2. End position close to start (finger came back) → likely a tap with wiggle
+      // 2. End position close to start (finger came back)
       if (endDistance < TAP_MAX_DISTANCE_PX) {
-        return { type: 'tap', x: startX, y: startY, timestampMs };
+        return { type: 'tap', x: startX, y: startY, timestampMs, debug: mkDebug(`endDist ${Math.round(endDistance)}px < ${TAP_MAX_DISTANCE_PX}px (finger returned to start)`) };
       }
 
-      // 3. Not enough intentional movement → treat as tap
+      // 3. Not enough intentional movement
       if (endDistance < MIN_SWIPE_DISTANCE_PX && velocity < FLING_VELOCITY_THRESHOLD) {
-        return { type: 'tap', x: startX, y: startY, timestampMs };
+        return { type: 'tap', x: startX, y: startY, timestampMs, debug: mkDebug(`endDist ${Math.round(endDistance)}px < ${MIN_SWIPE_DISTANCE_PX}px + velocity ${velocity.toFixed(3)} < ${FLING_VELOCITY_THRESHOLD}`) };
       }
 
-      // 4. Short duration + some movement + low velocity → probably a sloppy tap
+      // 4. Short duration + small movement
       if (durationMs < 200 && endDistance < MIN_SWIPE_DISTANCE_PX) {
-        return { type: 'tap', x: startX, y: startY, timestampMs };
+        return { type: 'tap', x: startX, y: startY, timestampMs, debug: mkDebug(`duration ${Math.round(durationMs)}ms < 200ms + endDist ${Math.round(endDistance)}px < ${MIN_SWIPE_DISTANCE_PX}px`) };
       }
 
       // 5. Clear intentional movement → SCROLL or SWIPE
-      const verticalRatio = Math.abs(dy) / (Math.abs(dx) + Math.abs(dy));
-
       if (verticalRatio >= SCROLL_VERTICAL_THRESHOLD) {
         const direction = dy < 0 ? 'up' : 'down';
         return {
           type: 'scroll', startX, startY, endX, endY,
-          direction: direction as 'up' | 'down',
-          timestampMs,
+          direction: direction as 'up' | 'down', timestampMs,
+          debug: mkDebug(`vertRatio ${verticalRatio.toFixed(2)} >= ${SCROLL_VERTICAL_THRESHOLD} → vertical scroll ${direction}`),
         };
       }
 
-      // Horizontal-dominant movement
-      const hDirection = dx < 0 ? 'left' : 'right';
       if (verticalRatio <= 0.3) {
-        // Mostly horizontal — could be a horizontal scroll
+        const direction = dx < 0 ? 'left' : 'right';
         return {
           type: 'scroll', startX, startY, endX, endY,
-          direction: hDirection as 'left' | 'right',
-          timestampMs,
+          direction: direction as 'left' | 'right', timestampMs,
+          debug: mkDebug(`vertRatio ${verticalRatio.toFixed(2)} <= 0.3 → horizontal scroll ${direction}`),
         };
       }
 
       return {
-        type: 'swipe', startX, startY, endX, endY,
-        durationMs, timestampMs,
+        type: 'swipe', startX, startY, endX, endY, durationMs, timestampMs,
+        debug: mkDebug(`endDist ${Math.round(endDistance)}px, vertRatio ${verticalRatio.toFixed(2)} → diagonal swipe`),
       };
     }
 

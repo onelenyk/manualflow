@@ -2,11 +2,21 @@
 
 export type UserAction = TapAction | SwipeAction | LongPressAction | ScrollAction;
 
+export interface GestureDebug {
+  durationMs: number;
+  endDistance: number;
+  maxDistFromStart: number;
+  velocity: number;
+  verticalRatio: number;
+  reason: string;
+}
+
 export interface TapAction {
   type: 'tap';
   x: number;
   y: number;
   timestampMs: number;
+  debug?: GestureDebug;
 }
 
 export interface SwipeAction {
@@ -17,6 +27,7 @@ export interface SwipeAction {
   endY: number;
   durationMs: number;
   timestampMs: number;
+  debug?: GestureDebug;
 }
 
 export interface LongPressAction {
@@ -25,6 +36,7 @@ export interface LongPressAction {
   y: number;
   durationMs: number;
   timestampMs: number;
+  debug?: GestureDebug;
 }
 
 export interface ScrollAction {
@@ -35,6 +47,7 @@ export interface ScrollAction {
   endY: number;
   direction: 'up' | 'down' | 'left' | 'right';
   timestampMs: number;
+  debug?: GestureDebug;
 }
 
 // --- UI Elements (from agent HTTP responses) ---

@@ -163,6 +163,41 @@ export function debugRoutes(state: AppState) {
     }
   });
 
+  // Accessibility tree dump from agent
+  router.get('/debug/tree', async (_req, res) => {
+    const serial = state.activeDevice;
+    if (!serial) return res.status(400).json({ error: 'No device selected' });
+
+    try {
+      await adbExec('-s', serial, 'forward', `tcp:${AGENT_PORT}`, `tcp:${AGENT_PORT}`).catch(() => {});
+      const resp = await fetch(`http://127.0.0.1:${AGENT_PORT}/tree`);
+      const tree = await resp.json();
+      res.json(tree);
+    } catch (e: any) {
+      res.status(500).json({ error: `Agent not responding: ${e.message}` });
+    }
+  });
+
+  // Element at coordinates from agent
+  router.post('/debug/element-at', async (req, res) => {
+    const serial = state.activeDevice;
+    if (!serial) return res.status(400).json({ error: 'No device selected' });
+
+    const { x, y } = req.body;
+    try {
+      await adbExec('-s', serial, 'forward', `tcp:${AGENT_PORT}`, `tcp:${AGENT_PORT}`).catch(() => {});
+      const resp = await fetch(`http://127.0.0.1:${AGENT_PORT}/element-at`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y }),
+      });
+      const element = await resp.json();
+      res.json(element);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Agent logcat
   router.get('/debug/logcat', async (_req, res) => {
     const serial = state.activeDevice;
