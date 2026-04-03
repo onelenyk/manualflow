@@ -10,12 +10,12 @@ import org.json.JSONObject
 class HttpServer(
     private val port: Int,
     private val eventCollector: EventCollector? = null,
+    private val elementResolver: ElementResolver,
 ) : NanoHTTPD(port) {
     companion object {
         private const val TAG = "MaestroHttpServer"
     }
 
-    private val elementResolver = ElementResolver()
     private val deviceInfoProvider = DeviceInfoProvider()
 
     override fun serve(session: IHTTPSession): Response {
@@ -26,6 +26,7 @@ class HttpServer(
                 session.uri == "/element-at" && session.method == Method.POST -> handleElementAt(session)
                 session.uri == "/events/stream" && session.method == Method.GET -> handleEventStream()
                 session.uri == "/events" && session.method == Method.GET -> handleEventsPoll()
+                session.uri == "/tree" && session.method == Method.GET -> handleTree()
                 else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             }
         } catch (e: Exception) {
@@ -67,8 +68,34 @@ class HttpServer(
             .put("clickable", element.clickable)
             .put("enabled", element.enabled)
             .put("focused", element.focused)
+            .put("checkable", element.checkable)
+            .put("checked", element.checked)
+            .put("editable", element.editable)
+            .put("scrollable", element.scrollable)
 
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+    }
+
+    /** Dump the full accessibility tree */
+    private fun handleTree(): Response {
+        val elements = elementResolver.dumpTree()
+        val jsonArray = JSONArray()
+        for (element in elements) {
+            val bounds = element.bounds?.let {
+                JSONObject().put("left", it.left).put("top", it.top).put("right", it.right).put("bottom", it.bottom)
+            }
+            jsonArray.put(JSONObject()
+                .put("className", element.className)
+                .put("text", element.text)
+                .put("resourceId", element.resourceId)
+                .put("contentDescription", element.contentDescription)
+                .put("bounds", bounds)
+                .put("clickable", element.clickable)
+                .put("enabled", element.enabled)
+                .put("editable", element.editable)
+                .put("scrollable", element.scrollable))
+        }
+        return newFixedLengthResponse(Response.Status.OK, "application/json", jsonArray.toString())
     }
 
     /** Chunked streaming endpoint — keeps connection open, sends JSON lines as events occur */

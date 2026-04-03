@@ -3,6 +3,7 @@ package com.maestrorecorder.agent
 import android.app.UiAutomation
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.maestrorecorder.agent.uiautomator.ElementResolver
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -11,17 +12,21 @@ class RecorderInstrumentation {
 
     @Test
     fun startServer() {
-        // Use FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES to receive events
-        // even when other accessibility services are running
         val uiAutomation = InstrumentationRegistry.getInstrumentation()
             .getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
 
         val eventCollector = EventCollector(uiAutomation)
         eventCollector.start()
 
-        val server = HttpServer(port = 50051, eventCollector = eventCollector)
+        val elementResolver = ElementResolver(uiAutomation)
+
+        val server = HttpServer(
+            port = 50051,
+            eventCollector = eventCollector,
+            elementResolver = elementResolver,
+        )
         server.start()
-        println("MaestroRecorder agent started on port 50051 (with event collector)")
+        println("MaestroRecorder agent started on port 50051")
 
         // Keep server running
         try {
