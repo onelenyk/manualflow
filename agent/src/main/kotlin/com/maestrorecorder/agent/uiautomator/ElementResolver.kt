@@ -43,27 +43,40 @@ class ElementResolver(
             return UiElement()
         }
 
-        Log.d(TAG, "Looking up element at ($x, $y), root has ${rootNode.childCount} children")
+        // Collect ALL nodes at this point, pick the most meaningful one
+        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>() // node + score
+        collectScoredNodesAt(rootNode, x, y, candidates)
 
-        val deepest = findDeepestNodeAt(rootNode, x, y)
-        val element = deepest?.toUiElement() ?: UiElement()
+        val best = candidates.maxByOrNull { it.second }
+        val element = best?.first?.toUiElement() ?: UiElement()
 
-        if (deepest != null) {
-            Log.d(TAG, "Found: ${element.text ?: element.resourceId ?: element.className ?: "(empty)"}")
-        } else {
-            Log.w(TAG, "No element found at ($x, $y)")
-        }
+        Log.d(TAG, "At ($x,$y): ${candidates.size} candidates, best=${element.text ?: element.resourceId ?: element.className} score=${best?.second}")
 
+        candidates.forEach { it.first.recycle() }
         rootNode.recycle()
-        onTreeAccess?.invoke() // Re-apply service flags after tree access
+        onTreeAccess?.invoke()
         return element
+    }
+
+    private fun collectScoredNodesAt(node: AccessibilityNodeInfo, x: Int, y: Int, results: MutableList<Pair<AccessibilityNodeInfo, Int>>) {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (!bounds.contains(x, y)) return
+
+        results.add(Pair(AccessibilityNodeInfo.obtain(node), nodeScore(node)))
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectScoredNodesAt(child, x, y, results)
+            child.recycle()
+        }
     }
 
     /** Walk the full tree and return all elements (for debugging) */
     fun dumpTree(): List<UiElement> {
         val rootNode = uiAutomation.rootInActiveWindow ?: return emptyList()
         val elements = mutableListOf<UiElement>()
-        collectNodes(rootNode, elements, maxDepth = 10)
+        collectNodes(rootNode, elements, maxDepth = 30)
         rootNode.recycle()
         onTreeAccess?.invoke()
         return elements
@@ -85,16 +98,49 @@ class ElementResolver(
 
         if (!bounds.contains(x, y)) return null
 
-        // Check children depth-first — deepest match wins
+        // Collect ALL matching children (not just first)
+        var bestChild: AccessibilityNodeInfo? = null
+
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val childResult = findDeepestNodeAt(child, x, y)
-            if (childResult != null) return childResult
-            child.recycle()
+            if (childResult != null) {
+                // Prefer nodes that have meaningful data
+                if (bestChild == null || isBetterNode(childResult, bestChild)) {
+                    bestChild?.recycle()
+                    bestChild = childResult
+                } else {
+                    childResult.recycle()
+                }
+            } else {
+                child.recycle()
+            }
         }
 
-        // No child contains the point — this node is the deepest
+        if (bestChild != null) return bestChild
+
         return node
+    }
+
+    /** Prefer nodes with text, resourceId, editable, or clickable over empty wrappers */
+    private fun isBetterNode(a: AccessibilityNodeInfo, b: AccessibilityNodeInfo): Boolean {
+        val aScore = nodeScore(a)
+        val bScore = nodeScore(b)
+        return aScore >= bScore
+    }
+
+    private fun nodeScore(node: AccessibilityNodeInfo): Int {
+        var score = 0
+        if (!node.text.isNullOrEmpty()) score += 10
+        if (!node.viewIdResourceName.isNullOrEmpty()) score += 8
+        if (!node.contentDescription.isNullOrEmpty()) score += 6
+        if (node.isEditable) score += 15  // strong preference for editable
+        if (node.isClickable) score += 5
+        if (node.isFocused) score += 5
+        // Penalize generic containers
+        val cls = node.className?.toString() ?: ""
+        if (cls == "android.view.View" || cls == "android.widget.FrameLayout") score -= 2
+        return score
     }
 
     private fun AccessibilityNodeInfo.toUiElement(): UiElement {
