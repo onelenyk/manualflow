@@ -1,7 +1,7 @@
 package com.maestrorecorder.agent.uiautomator
 
+import android.util.DisplayMetrics
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
 
 data class DeviceInfo(
     val screenWidth: Int,
@@ -11,17 +11,13 @@ data class DeviceInfo(
 
 class DeviceInfoProvider {
 
-    private val device: UiDevice by lazy {
-        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    }
-
     fun getInfo(): DeviceInfo {
         val metrics = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.displayMetrics
 
         return DeviceInfo(
-            screenWidth = device.displayWidth,
-            screenHeight = device.displayHeight,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
             density = metrics.densityDpi
         )
     }

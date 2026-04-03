@@ -18,7 +18,7 @@ class RecorderInstrumentation {
         val eventCollector = EventCollector(uiAutomation)
         eventCollector.start()
 
-        val elementResolver = ElementResolver(uiAutomation)
+        val elementResolver = ElementResolver(uiAutomation) { eventCollector.applyServiceFlags() }
 
         val server = HttpServer(
             port = 50051,

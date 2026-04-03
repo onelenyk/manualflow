@@ -85,12 +85,9 @@ export class EventCombiner extends EventEmitter {
   // --- Handlers ---
 
   private async handleTap(action: { x: number; y: number; timestampMs: number }) {
-    // Record for dedup
     this.recentTaps.push({ timestamp: action.timestampMs, x: action.x, y: action.y });
-    // Keep only last 10
     if (this.recentTaps.length > 10) this.recentTaps.shift();
 
-    // Look up element at tap coordinates
     const element = await this.agent.elementAt(action.x, action.y);
     if (element) {
       this.emit('element', { action, element });
@@ -98,6 +95,30 @@ export class EventCombiner extends EventEmitter {
 
     const selector = selectBestSelector(element, action.x, action.y);
     this.emitCommand({ type: 'tapOn', selector });
+
+    // Text input detection: if tapped on editable field, poll for text changes
+    if (element && (element.editable || element.className?.includes('EditText') || element.className?.includes('TextField'))) {
+      this.pollForTextInput(action.x, action.y, element.text || '');
+    }
+  }
+
+  /** Poll element text after tapping a text field — works for Compose and Views */
+  private async pollForTextInput(x: number, y: number, originalText: string) {
+    // Poll every 500ms for 5 seconds
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const updated = await this.agent.elementAt(x, y);
+      if (updated?.text && updated.text !== originalText && updated.text.length > 0) {
+        // Text changed — wait a bit more for user to finish typing
+        await new Promise(r => setTimeout(r, 1000));
+        const final = await this.agent.elementAt(x, y);
+        const finalText = final?.text || updated.text;
+        if (finalText !== originalText) {
+          this.emitCommand({ type: 'inputText', text: finalText });
+        }
+        return;
+      }
+    }
   }
 
   private async handleLongPress(action: { x: number; y: number; durationMs: number; timestampMs: number }) {

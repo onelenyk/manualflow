@@ -31,19 +31,25 @@ class EventCollector(private val uiAutomation: UiAutomation) {
 
     fun start() {
         Log.i(TAG, "Starting accessibility event listener")
-
-        val info = uiAutomation.serviceInfo
-        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
-        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-        info.flags = info.flags or
-            AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-            AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY
-        info.notificationTimeout = 0
-        uiAutomation.serviceInfo = info
-
+        applyServiceFlags()
         uiAutomation.setOnAccessibilityEventListener(listener)
         Log.i(TAG, "Listener registered")
+    }
+
+    /** Re-apply our service flags (call after anything that might reset them, like UiDevice) */
+    fun applyServiceFlags() {
+        try {
+            val info = uiAutomation.serviceInfo
+            info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            info.flags = info.flags or
+                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            info.notificationTimeout = 0
+            uiAutomation.serviceInfo = info
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to apply service flags: ${e.message}")
+        }
     }
 
     fun stop() {
@@ -84,7 +90,8 @@ class EventCollector(private val uiAutomation: UiAutomation) {
                     out.write(line.toByteArray())
                     out.flush()
                 } catch (e: Exception) {
-                    Log.w(TAG, "Pipe write failed: ${e.message}")
+                    Log.w(TAG, "Pipe write failed, closing pipe: ${e.message}")
+                    closePipe() // Auto-close broken pipe, allow reconnection
                 }
             }
 

@@ -27,7 +27,10 @@ data class UiElement(
     val scrollable: Boolean = false
 )
 
-class ElementResolver(private val uiAutomation: UiAutomation) {
+class ElementResolver(
+    private val uiAutomation: UiAutomation,
+    private val onTreeAccess: (() -> Unit)? = null, // callback to re-apply service flags
+) {
 
     companion object {
         private const val TAG = "ElementResolver"
@@ -52,6 +55,7 @@ class ElementResolver(private val uiAutomation: UiAutomation) {
         }
 
         rootNode.recycle()
+        onTreeAccess?.invoke() // Re-apply service flags after tree access
         return element
     }
 
@@ -61,6 +65,7 @@ class ElementResolver(private val uiAutomation: UiAutomation) {
         val elements = mutableListOf<UiElement>()
         collectNodes(rootNode, elements, maxDepth = 10)
         rootNode.recycle()
+        onTreeAccess?.invoke()
         return elements
     }
 
