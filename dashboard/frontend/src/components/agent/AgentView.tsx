@@ -99,21 +99,21 @@ export function AgentView() {
             />
           )}
 
-          {status?.installed && !status?.running && (
+          {status?.installed && (
             <ActionButton
               label="Start Agent" color="green" loading={loading}
               onClick={() => handleAction('Start', api.startAgent)}
             />
           )}
 
-          {status?.running && (
+          {(status?.running || status?.responsive) && (
             <ActionButton
               label="Stop Agent" color="slate" loading={loading}
               onClick={() => handleAction('Stop', api.stopAgent)}
             />
           )}
 
-          {status?.installed && !status?.running && (
+          {status?.installed && (
             <ActionButton
               label="Uninstall" color="red" loading={loading}
               onClick={() => handleAction('Uninstall', api.uninstallAgent)}
