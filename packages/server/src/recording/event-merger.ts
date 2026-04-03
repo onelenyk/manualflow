@@ -9,25 +9,25 @@ export class EventMerger {
     private screenHeight: number,
   ) {}
 
-  async merge(action: UserAction): Promise<MaestroCommand> {
+  async merge(action: UserAction): Promise<{ command: MaestroCommand; element: UiElement | null }> {
     switch (action.type) {
       case 'tap': return this.mergeTap(action);
       case 'longPress': return this.mergeLongPress(action);
-      case 'swipe': return this.mergeSwipe(action);
-      case 'scroll': return this.mergeScroll(action);
+      case 'swipe': return { command: this.mergeSwipe(action), element: null };
+      case 'scroll': return { command: this.mergeScroll(action), element: null };
     }
   }
 
-  private async mergeTap(action: { x: number; y: number }): Promise<MaestroCommand> {
+  private async mergeTap(action: { x: number; y: number }): Promise<{ command: MaestroCommand; element: UiElement | null }> {
     const element = await this.agent.elementAt(action.x, action.y);
     const selector = selectBestSelector(element, action.x, action.y);
-    return { type: 'tapOn', selector };
+    return { command: { type: 'tapOn', selector }, element };
   }
 
-  private async mergeLongPress(action: { x: number; y: number }): Promise<MaestroCommand> {
+  private async mergeLongPress(action: { x: number; y: number }): Promise<{ command: MaestroCommand; element: UiElement | null }> {
     const element = await this.agent.elementAt(action.x, action.y);
     const selector = selectBestSelector(element, action.x, action.y);
-    return { type: 'longPressOn', selector };
+    return { command: { type: 'longPressOn', selector }, element };
   }
 
   private mergeSwipe(action: { startX: number; startY: number; endX: number; endY: number }): MaestroCommand {

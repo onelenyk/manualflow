@@ -76,6 +76,9 @@ export class RecordingSession extends EventEmitter {
     this.geteventStream = new GeteventStream(this.deviceSerial, inputDevice.devicePath);
 
     this.geteventStream.on('line', (line: GeteventLine) => {
+      // Emit raw getevent line
+      this.emit('raw', line);
+
       const action = this.touchStateMachine.feed(line, this.converter!);
       if (action) {
         this.onUserAction(action);
@@ -97,12 +100,17 @@ export class RecordingSession extends EventEmitter {
     this.emit('action', action);
 
     try {
-      const command = await this.merger.merge(action);
+      const { command, element } = await this.merger.merge(action);
+
+      // Emit element data (for Element tab)
+      if (element) {
+        this.emit('element', { action, element });
+      }
+
       this.addCommand(command);
 
       // Detect text input for taps on text fields
-      if (action.type === 'tap') {
-        const element = await this.agent.elementAt(action.x, action.y);
+      if (action.type === 'tap' && element) {
         const text = await this.merger.detectTextInput(element, action.x, action.y);
         if (text) {
           this.addCommand({ type: 'inputText', text });

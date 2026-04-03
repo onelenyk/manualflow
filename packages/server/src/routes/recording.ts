@@ -115,5 +115,31 @@ export function recordingRoutes(state: AppState) {
     });
   });
 
+  // SSE stream for raw getevent lines
+  router.get('/recording/raw', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    const session = state.recordingSession;
+    if (!session) { res.write(`data: ${JSON.stringify({ type: 'error', message: 'Not recording' })}\n\n`); res.end(); return; }
+
+    const onRaw = (line: any) => {
+      res.write(`data: ${JSON.stringify({ type: 'raw', line })}\n\n`);
+    };
+    session.on('raw', onRaw);
+    req.on('close', () => { session.off('raw', onRaw); });
+  });
+
+  // SSE stream for element lookup results
+  router.get('/recording/elements', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    const session = state.recordingSession;
+    if (!session) { res.write(`data: ${JSON.stringify({ type: 'error', message: 'Not recording' })}\n\n`); res.end(); return; }
+
+    const onElement = (data: any) => {
+      res.write(`data: ${JSON.stringify({ type: 'element', ...data })}\n\n`);
+    };
+    session.on('element', onElement);
+    req.on('close', () => { session.off('element', onElement); });
+  });
+
   return router;
 }
