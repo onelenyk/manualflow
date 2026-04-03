@@ -108,22 +108,24 @@ export class RecordingSession extends EventEmitter {
       // Agent stream not available — continue without it
     }
 
-    // 10. Poll keyboard state to filter keyboard taps
+    // 10. Poll keyboard state to filter keyboard taps (every 2s — not too frequent)
     this.keyboardPollTimer = setInterval(async () => {
       try {
-        const output = await this.adbExec('shell', 'dumpsys', 'input_method');
+        const output = await this.adbExec(
+          'shell', 'dumpsys input_method | grep -E "mInputShown|touchableRegion"'
+        );
+
         const isOpen = output.includes('mInputShown=true');
 
-        // Extract keyboard top from touchableRegion
         let keyboardTop = 0;
         const regionMatch = output.match(/touchableRegion=SkRegion\(\((\d+),(\d+),(\d+),(\d+)\)\)/);
         if (regionMatch) {
-          keyboardTop = parseInt(regionMatch[2]); // y1 of keyboard region
+          keyboardTop = parseInt(regionMatch[2]);
         }
 
         this.combiner?.setKeyboardState(isOpen, keyboardTop);
       } catch {}
-    }, 300);
+    }, 2000);
 
     this.emit('status', 'recording');
   }
