@@ -47,9 +47,9 @@ export class EventCombiner extends EventEmitter {
   private lastWindowPackage: string = '';
   private lastAssertText: string = '';
 
-  // Keyboard state: when true, ignore taps in bottom portion of screen
+  // Keyboard state
   private keyboardOpen: boolean = false;
-  private lastEditableTapTime: number = 0;
+  private keyboardTop: number = 0; // y coordinate where keyboard starts
 
   constructor(agent: AgentClient, screenWidth: number, screenHeight: number) {
     super();
@@ -58,9 +58,10 @@ export class EventCombiner extends EventEmitter {
     this.screenHeight = screenHeight;
   }
 
-  /** Set keyboard state (called from recording session polling) */
-  setKeyboardOpen(open: boolean): void {
+  /** Set keyboard state with actual keyboard bounds */
+  setKeyboardState(open: boolean, keyboardTop?: number): void {
     this.keyboardOpen = open;
+    if (keyboardTop) this.keyboardTop = keyboardTop;
   }
 
   /** Handle a gesture from getevent + TouchStateMachine */
@@ -68,10 +69,9 @@ export class EventCombiner extends EventEmitter {
     // Filter keyboard area taps
     if (this.keyboardOpen && (action.type === 'tap' || action.type === 'longPress')) {
       const y = action.type === 'tap' ? action.y : action.y;
-      const keyboardThreshold = this.screenHeight * 0.58; // keyboard starts around 58% down
-      if (y > keyboardThreshold) {
-        // This is a keyboard key tap — skip it
-        return;
+      const threshold = this.keyboardTop > 0 ? this.keyboardTop : this.screenHeight * 0.55;
+      if (y > threshold) {
+        return; // keyboard key tap — skip
       }
     }
 

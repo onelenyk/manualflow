@@ -113,9 +113,17 @@ export class RecordingSession extends EventEmitter {
       try {
         const output = await this.adbExec('shell', 'dumpsys', 'input_method');
         const isOpen = output.includes('mInputShown=true');
-        this.combiner?.setKeyboardOpen(isOpen);
+
+        // Extract keyboard top from touchableRegion
+        let keyboardTop = 0;
+        const regionMatch = output.match(/touchableRegion=SkRegion\(\((\d+),(\d+),(\d+),(\d+)\)\)/);
+        if (regionMatch) {
+          keyboardTop = parseInt(regionMatch[2]); // y1 of keyboard region
+        }
+
+        this.combiner?.setKeyboardState(isOpen, keyboardTop);
       } catch {}
-    }, 500);
+    }, 300);
 
     this.emit('status', 'recording');
   }
