@@ -17,7 +17,8 @@ export class TouchStateMachine {
   private currentRawY = 0;
   private startRawX = 0;
   private startRawY = 0;
-  private startCaptured = false; // whether we've captured the start position for this touch
+  private startXCaptured = false;
+  private startYCaptured = false;
 
   private maxDistanceFromStart = 0;
   private totalPathLength = 0;
@@ -43,13 +44,20 @@ export class TouchStateMachine {
     }
 
     if (this.phase === 'touchActive') {
-      // Capture start position from FIRST position update after DOWN
-      if (!this.startCaptured) {
+      // Capture start position — update per-axis as each ABS event arrives
+      if (line.code === 'ABS_MT_POSITION_X' && !this.startXCaptured) {
         this.startRawX = this.currentRawX;
-        this.startRawY = this.currentRawY;
         this.lastRawX = this.currentRawX;
+        this.startXCaptured = true;
+      }
+      if (line.code === 'ABS_MT_POSITION_Y' && !this.startYCaptured) {
+        this.startRawY = this.currentRawY;
         this.lastRawY = this.currentRawY;
-        this.startCaptured = true;
+        this.startYCaptured = true;
+      }
+
+      // Don't track movement until we have the start position
+      if (!this.startXCaptured || !this.startYCaptured) {
         return null;
       }
 
@@ -81,7 +89,8 @@ export class TouchStateMachine {
     if (line.value === 'DOWN') {
       this.phase = 'touchActive';
       this.downTimestamp = line.timestamp;
-      this.startCaptured = false; // will be set on first ABS event
+      this.startXCaptured = false;
+      this.startYCaptured = false;
       this.maxDistanceFromStart = 0;
       this.totalPathLength = 0;
       this.sampleCount = 0;
@@ -91,11 +100,10 @@ export class TouchStateMachine {
     if (line.value === 'UP') {
       if (this.phase === 'idle') return null;
 
-      // If we never got position events, use currentRaw as fallback
-      if (!this.startCaptured) {
-        this.startRawX = this.currentRawX;
-        this.startRawY = this.currentRawY;
-      }
+      // If axis didn't change from last touch, kernel doesn't send it.
+      // currentRaw still has correct value from previous touch (same position).
+      if (!this.startXCaptured) this.startRawX = this.currentRawX;
+      if (!this.startYCaptured) this.startRawY = this.currentRawY;
 
       const durationMs = (line.timestamp - this.downTimestamp) * 1000;
       const startX = converter.toPixelX(this.startRawX);
