@@ -118,6 +118,23 @@ export function RecordView() {
           {error && <div className="mt-2 text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</div>}
         </div>
 
+        {/* Pipeline visualization */}
+        {recState === 'recording' || rawLines.length > 0 ? (
+          <div className="bg-slate-900/60 rounded-xl border border-slate-800 px-4 py-2 shrink-0">
+            <div className="flex items-center gap-1 text-[9px]">
+              <PipelineStage label="Raw" count={rawLines.length} active={recState === 'recording'} color="text-green-400" />
+              <Arrow />
+              <PipelineStage label="Parsed" count={parsedActions.length} active={parsedActions.length > 0} color="text-blue-400" />
+              <Arrow />
+              <PipelineStage label="Element" count={elements.length} active={elements.length > 0} color="text-purple-400" />
+              <Arrow />
+              <PipelineStage label="Command" count={commands.length} active={commands.length > 0} color="text-teal-400" />
+              <Arrow />
+              <PipelineStage label="YAML" count={yamlLines.length} active={yamlLines.length > 0} color="text-amber-400" />
+            </div>
+          </div>
+        ) : null}
+
         {/* Tabs */}
         <div className="flex gap-1 shrink-0">
           {tabs.map(t => (
@@ -285,6 +302,20 @@ function F({ label, value, color }: { label: string; value: string; color: strin
       <span className={`font-mono ${color}`}>{value}</span>
     </div>
   );
+}
+
+function PipelineStage({ label, count, active, color }: { label: string; count: number; active: boolean; color: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-400 animate-pulse' : 'bg-slate-700'}`} />
+      <span className="text-slate-500">{label}</span>
+      <span className={`font-mono font-bold ${count > 0 ? color : 'text-slate-700'}`}>{count}</span>
+    </div>
+  );
+}
+
+function Arrow() {
+  return <span className="text-slate-700 mx-1">→</span>;
 }
 
 function renderYamlLine(cmd: any): string {
