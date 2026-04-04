@@ -128,6 +128,10 @@ export function agentRoutes(state: AppState) {
       clearTimeout(timeout);
 
       if (resp.ok) {
+        // Agent is responsive — auto-connect device stream
+        if (state.deviceStream && serial && !state.deviceStream.connected) {
+          state.deviceStream.connect(serial).catch(() => {});
+        }
         res.json({ status: 'started', responsive: true });
       } else {
         res.json({ status: 'started', responsive: false, warning: 'Agent started but not responding yet' });

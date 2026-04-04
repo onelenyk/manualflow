@@ -5,7 +5,7 @@ import { RecordView } from '../recording/RecordView';
 import { AgentView } from '../agent/AgentView';
 
 export function MainLayout() {
-  const [activeView, setActiveView] = useState('record');
+  const [activeView, setActiveView] = useState('stream');
 
   return (
     <div className="h-screen flex flex-col bg-slate-950">
@@ -13,7 +13,7 @@ export function MainLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeView={activeView} onViewChange={setActiveView} />
         <main className="flex-1 overflow-hidden p-4">
-          {activeView === 'record' && <RecordView />}
+          {activeView === 'stream' && <RecordView />}
           {activeView === 'agent' && <AgentView />}
         </main>
       </div>

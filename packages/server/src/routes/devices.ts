@@ -40,9 +40,18 @@ export function deviceRoutes(state: AppState) {
     }
   });
 
-  router.post('/devices/:serial/select', (req, res) => {
-    state.activeDevice = req.params.serial;
-    res.json({ selected: req.params.serial });
+  router.post('/devices/:serial/select', async (req, res) => {
+    const serial = req.params.serial;
+    state.activeDevice = serial;
+
+    // Try to auto-connect device stream (non-blocking — agent may not be ready yet)
+    if (state.deviceStream) {
+      state.deviceStream.connect(serial).catch(() => {
+        // Agent not ready yet — will connect when agent starts
+      });
+    }
+
+    res.json({ selected: serial });
   });
 
   // --- scrcpy mirror management ---

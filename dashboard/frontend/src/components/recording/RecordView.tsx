@@ -1,103 +1,64 @@
 import { useState, useRef, useEffect } from 'react';
 import { ScreenMirror } from '../device/ScreenMirror';
-import { RecordingControls } from './RecordingControls';
-import { useRecordingStore } from '../../stores/recordingStore';
+import { useStreamStore } from '../../stores/streamStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 
-type Tab = 'raw' | 'parsed' | 'element' | 'command' | 'yaml';
+type Tab = 'interactions' | 'yaml';
 
 export function RecordView() {
-  const { state: recState, error, yaml } = useRecordingStore();
+  const {
+    connected, interactions, selectedIds, yaml, exporting, error,
+    connectSSE, disconnectSSE, toggleSelect, selectAll, selectNone,
+    exportYaml, clearInteractions,
+  } = useStreamStore();
   const { selectedDevice } = useDeviceStore();
-  const [tab, setTab] = useState<Tab>('parsed');
-
-  const [rawLines, setRawLines] = useState<any[]>([]);
-  const [parsedActions, setParsedActions] = useState<any[]>([]);
-  const [elements, setElements] = useState<any[]>([]);
-  const [commands, setCommands] = useState<any[]>([]);
-  const [yamlLines, setYamlLines] = useState<string[]>([]);
-
-  const esRefs = useRef<EventSource[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<Tab>('interactions');
+  const [appId, setAppId] = useState('com.unknown.app');
   const [copied, setCopied] = useState(false);
+  const [lastClickedId, setLastClickedId] = useState<number | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Connect SSE on mount
+  useEffect(() => {
+    connectSSE();
+    return () => disconnectSSE();
+  }, []);
+
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [rawLines.length, parsedActions.length, elements.length, commands.length, yamlLines.length]);
+  }, [interactions.length]);
 
-  // Connect all SSE streams when recording starts
-  useEffect(() => {
-    if (recState !== 'recording') {
-      esRefs.current.forEach(es => es.close());
-      esRefs.current = [];
-      return;
-    }
-
-    setRawLines([]);
-    setParsedActions([]);
-    setElements([]);
-    setCommands([]);
-    setYamlLines([]);
-
-    const connect = (path: string, handler: (data: any) => void): EventSource => {
-      const es = new EventSource(`/api${path}`);
-      es.onmessage = (ev) => { try { handler(JSON.parse(ev.data)); } catch {} };
-      esRefs.current.push(es);
-      return es;
-    };
-
-    // Raw getevent lines
-    connect('/recording/raw', (data) => {
-      if (data.type === 'raw' && data.line) {
-        const l = data.line;
-        setRawLines(prev => {
-          const next = [...prev, `[${l.type}] ${l.code} ${l.value}`];
-          return next.length > 500 ? next.slice(-500) : next;
-        });
-      }
-    });
-
-    // Parsed actions
-    connect('/recording/actions', (data) => {
-      if (data.type === 'action') setParsedActions(prev => [...prev, data.action]);
-    });
-
-    // Element lookups
-    connect('/recording/elements', (data) => {
-      if (data.type === 'element') setElements(prev => [...prev, data]);
-    });
-
-    // Commands + YAML
-    connect('/recording/events', (data) => {
-      if (data.type === 'command' && data.command) {
-        setCommands(prev => [...prev, data.command]);
-        setYamlLines(prev => [...prev, renderYamlLine(data.command)]);
-      }
-    });
-
-    return () => {
-      esRefs.current.forEach(es => es.close());
-      esRefs.current = [];
-    };
-  }, [recState]);
-
-  const fullYaml = yaml || (yamlLines.length > 0
-    ? `appId: com.unknown.app\n---\n${yamlLines.join('\n')}\n`
-    : '');
+  const visible = interactions.filter(i => !i.filteredAsKeyboardTap);
+  const selectedCount = selectedIds.size;
 
   const handleCopy = async () => {
-    if (!fullYaml) return;
-    await navigator.clipboard.writeText(fullYaml);
+    if (!yaml) return;
+    await navigator.clipboard.writeText(yaml);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: 'raw', label: 'Raw', count: rawLines.length },
-    { id: 'parsed', label: 'Parsed', count: parsedActions.length },
-    { id: 'element', label: 'Element', count: elements.length },
-    { id: 'command', label: 'Command', count: commands.length },
-    { id: 'yaml', label: 'YAML', count: yamlLines.length },
+  const handleExport = () => {
+    exportYaml(appId);
+    setTab('yaml');
+  };
+
+  const handleRowClick = (id: number, e: React.MouseEvent) => {
+    if (e.shiftKey && lastClickedId !== null) {
+      // Range select
+      const from = Math.min(lastClickedId, id);
+      const to = Math.max(lastClickedId, id);
+      useStreamStore.getState().selectRange(from, to);
+    } else {
+      toggleSelect(id);
+    }
+    setLastClickedId(id);
+  };
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'interactions', label: `Interactions (${visible.length})` },
+    { id: 'yaml', label: 'YAML' },
   ];
 
   return (
@@ -109,31 +70,59 @@ export function RecordView() {
 
       {/* Right */}
       <div className="flex flex-col flex-1 gap-3 min-h-0">
-        {/* Controls */}
+        {/* Header bar */}
         <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4 shrink-0">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Record Flow</h2>
-            <RecordingControls />
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-white">Device Stream</h2>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-slate-600'}`} />
+                <span className="text-[10px] text-slate-400">
+                  {connected ? 'Connected' : selectedDevice ? 'Waiting for agent...' : 'No device'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* App ID input */}
+              <input
+                type="text"
+                value={appId}
+                onChange={e => setAppId(e.target.value)}
+                placeholder="com.your.app"
+                className="w-40 px-2 py-1 text-[10px] bg-slate-800 border border-slate-700 text-slate-300 rounded-md focus:outline-none focus:border-blue-500"
+              />
+
+              {/* Export button */}
+              <button
+                onClick={handleExport}
+                disabled={selectedCount === 0 || exporting}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-xs font-medium rounded-lg transition-all active:scale-95"
+              >
+                {exporting ? 'Exporting...' : `Export (${selectedCount})`}
+              </button>
+            </div>
           </div>
           {error && <div className="mt-2 text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</div>}
         </div>
 
-        {/* Pipeline visualization */}
-        {recState === 'recording' || rawLines.length > 0 ? (
-          <div className="bg-slate-900/60 rounded-xl border border-slate-800 px-4 py-2 shrink-0">
-            <div className="flex items-center gap-1 text-[9px]">
-              <PipelineStage label="Raw" count={rawLines.length} active={recState === 'recording'} color="text-green-400" />
-              <Arrow />
-              <PipelineStage label="Parsed" count={parsedActions.length} active={parsedActions.length > 0} color="text-blue-400" />
-              <Arrow />
-              <PipelineStage label="Element" count={elements.length} active={elements.length > 0} color="text-purple-400" />
-              <Arrow />
-              <PipelineStage label="Command" count={commands.length} active={commands.length > 0} color="text-teal-400" />
-              <Arrow />
-              <PipelineStage label="YAML" count={yamlLines.length} active={yamlLines.length > 0} color="text-amber-400" />
-            </div>
+        {/* Selection toolbar */}
+        {visible.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0 text-[10px]">
+            <button onClick={selectAll} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
+              Select all
+            </button>
+            <button onClick={selectNone} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
+              Clear selection
+            </button>
+            <button onClick={clearInteractions} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
+              Clear all
+            </button>
+            <span className="text-slate-600 ml-auto">
+              {selectedCount > 0 ? `${selectedCount} selected` : 'Click to select, Shift+click for range'}
+            </span>
           </div>
-        ) : null}
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 shrink-0">
@@ -145,22 +134,27 @@ export function RecordView() {
                 tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
-              {t.label} {t.count > 0 && <span className="opacity-60">({t.count})</span>}
+              {t.label}
             </button>
           ))}
         </div>
 
         {/* Content */}
         <div className="flex-1 min-h-0 bg-slate-900/60 rounded-xl border border-slate-800 overflow-auto p-3">
-          {recState !== 'recording' && commands.length === 0 && !yaml ? (
-            <div className="text-slate-600 text-xs text-center py-12">Click Record, then touch the phone screen</div>
+          {!connected && visible.length === 0 ? (
+            <div className="text-slate-600 text-xs text-center py-12">
+              {selectedDevice ? 'Start the agent to begin streaming...' : 'Select a device to begin'}
+            </div>
           ) : (
             <>
-              {tab === 'raw' && <RawTab lines={rawLines} />}
-              {tab === 'parsed' && <ParsedTab actions={parsedActions} />}
-              {tab === 'element' && <ElementTab elements={elements} />}
-              {tab === 'command' && <CommandTab commands={commands} />}
-              {tab === 'yaml' && <YamlTab yaml={fullYaml} onCopy={handleCopy} copied={copied} />}
+              {tab === 'interactions' && (
+                <InteractionList
+                  interactions={visible}
+                  selectedIds={selectedIds}
+                  onRowClick={handleRowClick}
+                />
+              )}
+              {tab === 'yaml' && <YamlTab yaml={yaml} onCopy={handleCopy} copied={copied} />}
             </>
           )}
           <div ref={bottomRef} />
@@ -170,110 +164,142 @@ export function RecordView() {
   );
 }
 
-// --- Tab Components ---
+// --- Interaction List ---
 
-function RawTab({ lines }: { lines: string[] }) {
-  if (lines.length === 0) return <Empty text="Waiting for raw events..." />;
-  return (
-    <div className="font-mono text-[9px] text-green-400 leading-relaxed">
-      {lines.map((l, i) => <div key={i} className="hover:bg-slate-800/50 px-1">{l}</div>)}
-    </div>
-  );
-}
+function InteractionList({
+  interactions,
+  selectedIds,
+  onRowClick,
+}: {
+  interactions: any[];
+  selectedIds: Set<number>;
+  onRowClick: (id: number, e: React.MouseEvent) => void;
+}) {
+  if (interactions.length === 0) {
+    return <Empty text="Interactions will appear as you use the device..." />;
+  }
 
-function ParsedTab({ actions }: { actions: any[] }) {
-  if (actions.length === 0) return <Empty text="Touch the phone to see parsed actions..." />;
-  const colors: Record<string, string> = { tap: 'bg-blue-500', swipe: 'bg-teal-500', longPress: 'bg-orange-500', scroll: 'bg-indigo-500' };
-
-  return (
-    <div className="flex flex-col gap-2">
-      {actions.map((a, i) => (
-        <div key={i} className="rounded-lg bg-slate-800/30 p-2">
-          <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-slate-600 w-4 text-right">#{i+1}</span>
-            <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${colors[a.type] || 'bg-slate-500'}`}>{a.type.toUpperCase()}</span>
-            {a.type === 'tap' && <span className="text-yellow-400 font-mono">({a.x}, {a.y})</span>}
-            {a.type === 'swipe' && <span className="text-yellow-400 font-mono">({a.startX},{a.startY}) → ({a.endX},{a.endY})</span>}
-            {a.type === 'scroll' && <span className="text-indigo-300 font-mono">{a.direction}</span>}
-            {a.type === 'longPress' && <span className="text-yellow-400 font-mono">({a.x}, {a.y}) {Math.round(a.durationMs)}ms</span>}
-          </div>
-          {a.debug && (
-            <div className="ml-7 mt-1 text-[9px] space-y-0.5">
-              <div className="text-slate-500 italic">{a.debug.reason}</div>
-              <div className="flex gap-3 text-slate-600">
-                <span>dist: <span className="text-slate-400">{a.debug.endDistance}px</span></span>
-                <span>maxDist: <span className="text-slate-400">{a.debug.maxDistFromStart}px</span></span>
-                <span>dur: <span className="text-slate-400">{a.debug.durationMs}ms</span></span>
-                <span>vel: <span className="text-slate-400">{a.debug.velocity}</span></span>
-                <span>vert: <span className="text-slate-400">{a.debug.verticalRatio}</span></span>
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ElementTab({ elements }: { elements: any[] }) {
-  if (elements.length === 0) return <Empty text="Elements will appear after taps are resolved..." />;
-
-  return (
-    <div className="flex flex-col gap-2">
-      {elements.map((e, i) => (
-        <div key={i} className="bg-slate-800/40 rounded-lg p-2.5 text-[10px]">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-slate-600">#{i+1}</span>
-            <span className="text-[9px] font-bold text-white bg-purple-500 px-1.5 py-0.5 rounded">ELEMENT</span>
-            <span className="text-white truncate">{e.element?.text || e.element?.contentDescription || e.element?.className || '(empty)'}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 ml-7">
-            {e.element?.resourceId && <F label="resourceId" value={e.element.resourceId} color="text-green-400" />}
-            {e.element?.text && <F label="text" value={e.element.text} color="text-white" />}
-            {e.element?.contentDescription && <F label="contentDesc" value={e.element.contentDescription} color="text-cyan-400" />}
-            {e.element?.className && <F label="class" value={e.element.className} color="text-slate-400" />}
-            {e.element?.bounds && <F label="bounds" value={`(${e.element.bounds.left},${e.element.bounds.top})-(${e.element.bounds.right},${e.element.bounds.bottom})`} color="text-slate-500" />}
-            {e.action && <F label="at" value={`(${e.action.x || e.action.startX}, ${e.action.y || e.action.startY})`} color="text-yellow-400" />}
-            <F label="clickable" value={String(e.element?.clickable ?? '')} color={e.element?.clickable ? 'text-green-400' : 'text-slate-600'} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CommandTab({ commands }: { commands: any[] }) {
-  if (commands.length === 0) return <Empty text="Commands will appear as gestures are resolved..." />;
-
-  const colors: Record<string, string> = {
-    launchApp: 'bg-purple-500', tapOn: 'bg-blue-500', longPressOn: 'bg-orange-500',
-    scroll: 'bg-indigo-500', swipe: 'bg-teal-500', inputText: 'bg-amber-500',
+  const actionColors: Record<string, string> = {
+    tap: 'bg-blue-500', swipe: 'bg-teal-500', longPress: 'bg-orange-500', scroll: 'bg-indigo-500',
   };
 
   return (
-    <div className="flex flex-col gap-1.5">
-      {commands.map((c, i) => (
-        <div key={i} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg bg-slate-800/30">
-          <span className="text-slate-600 w-4 text-right">#{i+1}</span>
-          <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${colors[c.type] || 'bg-slate-500'}`}>{c.type}</span>
-          {c.selector && (
-            <span className="font-mono text-slate-300">
-              {c.selector.kind === 'id' && <span className="text-green-400">id: "{c.selector.id}"</span>}
-              {c.selector.kind === 'text' && <span className="text-white">"{c.selector.text}"</span>}
-              {c.selector.kind === 'contentDescription' && <span className="text-cyan-400">[{c.selector.description}]</span>}
-              {c.selector.kind === 'point' && <span className="text-yellow-400">point: ({c.selector.x},{c.selector.y})</span>}
-            </span>
-          )}
-          {c.type === 'swipe' && <span className="text-teal-300 font-mono">{c.start} → {c.end}</span>}
-          {c.type === 'inputText' && <span className="text-amber-300 font-mono">"{c.text}"</span>}
-        </div>
-      ))}
+    <div className="flex flex-col gap-1">
+      {interactions.map((interaction) => {
+        const selected = selectedIds.has(interaction.id);
+        const a = interaction.touchAction;
+        const el = interaction.element;
+        const a11y = interaction.accessibilityEvents;
+        const isPending = interaction.status === 'pending';
+        const isA11yOnly = interaction.source === 'accessibility';
+
+        return (
+          <div
+            key={interaction.id}
+            onClick={(e) => onRowClick(interaction.id, e)}
+            className={`rounded-lg p-2.5 cursor-pointer transition-all select-none ${
+              selected
+                ? 'bg-blue-500/15 border border-blue-500/40'
+                : 'bg-slate-800/30 border border-transparent hover:bg-slate-800/50'
+            } ${isPending ? 'opacity-60' : ''}`}
+          >
+            {/* Row header */}
+            <div className="flex items-center gap-2 text-[10px]">
+              {/* Checkbox */}
+              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                selected ? 'bg-blue-500 border-blue-500' : 'border-slate-600'
+              }`}>
+                {selected && <span className="text-white text-[8px]">{'✓'}</span>}
+              </div>
+
+              <span className="text-slate-600 w-5 text-right">#{interaction.id}</span>
+
+              {/* Action badge */}
+              {a && (
+                <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${actionColors[a.type] || 'bg-slate-500'}`}>
+                  {a.type.toUpperCase()}
+                </span>
+              )}
+
+              {/* Accessibility-only badge */}
+              {isA11yOnly && a11y.length > 0 && (
+                <span className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded bg-purple-500">
+                  {a11y[0].type.toUpperCase()}
+                </span>
+              )}
+
+              {/* Coordinates / details */}
+              {a?.type === 'tap' && <span className="text-yellow-400 font-mono text-[9px]">({a.x}, {a.y})</span>}
+              {a?.type === 'swipe' && <span className="text-yellow-400 font-mono text-[9px]">({a.startX},{a.startY}){'\u2192'}({a.endX},{a.endY})</span>}
+              {a?.type === 'scroll' && <span className="text-indigo-300 font-mono text-[9px]">{a.direction}</span>}
+              {a?.type === 'longPress' && <span className="text-yellow-400 font-mono text-[9px]">({a.x}, {a.y}) {Math.round(a.durationMs)}ms</span>}
+
+              {/* Element summary (inline) */}
+              {el && (
+                <span className="text-slate-400 text-[9px] truncate">
+                  {el.text ? `"${el.text}"` : el.resourceId ? `#${el.resourceId.split(':id/').pop()}` : el.contentDescription || el.className}
+                </span>
+              )}
+
+              {/* A11y event text for standalone events */}
+              {isA11yOnly && a11y[0]?.text && (
+                <span className="text-slate-300 font-mono text-[9px] truncate">"{a11y[0].text}"</span>
+              )}
+
+              {isPending && <span className="text-yellow-500 text-[8px] animate-pulse ml-auto">PENDING</span>}
+            </div>
+
+            {/* Expanded details when selected */}
+            {selected && (
+              <div className="ml-7 mt-1.5 space-y-1">
+                {/* Debug info */}
+                {a?.debug && (
+                  <div className="text-[9px]">
+                    <div className="text-slate-500 italic">{a.debug.reason}</div>
+                    <div className="flex gap-3 text-slate-600">
+                      <span>dist: <span className="text-slate-400">{a.debug.endDistance}px</span></span>
+                      <span>dur: <span className="text-slate-400">{a.debug.durationMs}ms</span></span>
+                      <span>vel: <span className="text-slate-400">{a.debug.velocity}</span></span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Element detail */}
+                {el && (
+                  <div className="bg-slate-800/50 rounded px-2 py-1.5 text-[9px]">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                      {el.resourceId && <F label="id" value={el.resourceId} color="text-green-400" />}
+                      {el.text && <F label="text" value={el.text} color="text-white" />}
+                      {el.contentDescription && <F label="desc" value={el.contentDescription} color="text-cyan-400" />}
+                      {el.className && <F label="class" value={el.className} color="text-slate-400" />}
+                      {el.bounds && <F label="bounds" value={`(${el.bounds.left},${el.bounds.top})-(${el.bounds.right},${el.bounds.bottom})`} color="text-slate-500" />}
+                    </div>
+                  </div>
+                )}
+
+                {/* A11y events */}
+                {a11y.length > 0 && (
+                  <div className="space-y-0.5">
+                    {a11y.map((evt: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-[9px] text-slate-500">
+                        <span className="text-[8px] font-bold text-orange-400 bg-orange-400/10 px-1 rounded">{evt.type}</span>
+                        {evt.text && <span className="text-slate-300 font-mono truncate">"{evt.text}"</span>}
+                        {evt.packageName && <span className="text-slate-600">{evt.packageName}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function YamlTab({ yaml, onCopy, copied }: { yaml: string; onCopy: () => void; copied: boolean }) {
-  if (!yaml) return <Empty text="YAML will appear as commands are generated..." />;
+  if (!yaml) return <Empty text="Select interactions and click Export to generate YAML" />;
 
   return (
     <div>
@@ -302,33 +328,4 @@ function F({ label, value, color }: { label: string; value: string; color: strin
       <span className={`font-mono ${color}`}>{value}</span>
     </div>
   );
-}
-
-function PipelineStage({ label, count, active, color }: { label: string; count: number; active: boolean; color: string }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-400 animate-pulse' : 'bg-slate-700'}`} />
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-mono font-bold ${count > 0 ? color : 'text-slate-700'}`}>{count}</span>
-    </div>
-  );
-}
-
-function Arrow() {
-  return <span className="text-slate-700 mx-1">→</span>;
-}
-
-function renderYamlLine(cmd: any): string {
-  if (cmd.type === 'launchApp') return '- launchApp';
-  if (cmd.type === 'scroll') return '- scroll';
-  if (cmd.type === 'inputText') return `- inputText: "${cmd.text}"`;
-  if (cmd.type === 'swipe') return `- swipe:\n    start: "${cmd.start}"\n    end: "${cmd.end}"`;
-  if (cmd.selector) {
-    const sel = cmd.selector;
-    if (sel.kind === 'text') return `- ${cmd.type}: "${sel.text}"`;
-    if (sel.kind === 'id') return `- ${cmd.type}:\n    id: "${sel.id}"`;
-    if (sel.kind === 'contentDescription') return `- ${cmd.type}: "${sel.description}"`;
-    if (sel.kind === 'point') return `- ${cmd.type}:\n    point: "${sel.x},${sel.y}"`;
-  }
-  return `- ${cmd.type}`;
 }

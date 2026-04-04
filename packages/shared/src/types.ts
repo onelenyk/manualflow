@@ -59,6 +59,7 @@ export interface UiElement {
   contentDescription?: string;
   bounds: ElementBounds;
   clickable: boolean;
+  editable: boolean;
   enabled: boolean;
   focused: boolean;
 }
@@ -138,4 +139,68 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
+}
+
+// --- Accessibility Events (from agent event stream) ---
+
+export interface AccessibilityEventData {
+  type: 'textChanged' | 'windowChanged' | 'click' | 'longClick' | 'focused' | 'selected' | 'scroll';
+  text?: string;
+  beforeText?: string;
+  resourceId?: string;
+  contentDescription?: string;
+  className?: string;
+  packageName?: string;
+  bounds?: ElementBounds;
+  timestampMs: number;
+  direction?: string;
+  addedCount?: number;
+  removedCount?: number;
+  extras?: Record<string, string>;
+}
+
+// --- Keyboard State ---
+
+export interface KeyboardState {
+  open: boolean;
+  top: number; // y coordinate where keyboard starts (0 if unknown)
+}
+
+// --- Recorded Interaction (unified action record) ---
+
+export type InteractionSource = 'getevent' | 'accessibility';
+
+export type InteractionStatus = 'pending' | 'complete';
+
+export interface RecordedInteraction {
+  /** Unique incrementing ID */
+  id: number;
+
+  /** What triggered this interaction */
+  source: InteractionSource;
+
+  /** Whether the correlation window is still open */
+  status: InteractionStatus;
+
+  /** Timestamp when this interaction was created */
+  timestampMs: number;
+
+  // --- Source 1: getevent touch gesture ---
+  touchAction?: UserAction;
+
+  // --- Source 2: UI element found at touch coordinates ---
+  element?: UiElement;
+
+  // --- Source 3: Correlated accessibility events ---
+  accessibilityEvents: AccessibilityEventData[];
+
+  // --- Source 4: Keyboard state at time of interaction ---
+  keyboardState?: KeyboardState;
+
+  /** Was this tap filtered because it landed in the keyboard area? */
+  filteredAsKeyboardTap: boolean;
+
+  /** Screen dimensions (needed for coordinate conversion) */
+  screenWidth: number;
+  screenHeight: number;
 }
