@@ -34,6 +34,8 @@ class ElementResolver(
 
     companion object {
         private const val TAG = "ElementResolver"
+        /** Expand tap hit area by this many pixels to catch nearby meaningful elements */
+        private const val TAP_MARGIN_PX = 24
     }
 
     fun findElementAt(x: Int, y: Int): UiElement {
@@ -43,13 +45,31 @@ class ElementResolver(
             return UiElement()
         }
 
-        // Collect ALL nodes at this point, pick the most meaningful one
-        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>() // node + score
+        // 1. Collect nodes at the exact tap point
+        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>()
         collectScoredNodesAt(rootNode, x, y, candidates)
 
         val best = candidates.maxByOrNull { it.second }
-        val element = best?.first?.toUiElement() ?: UiElement()
 
+        // 2. If the best hit is a generic container (low score), search nearby with margin
+        if (best == null || best.second < 5) {
+            val nearbyCandidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>()
+            collectScoredNodesNear(rootNode, x, y, TAP_MARGIN_PX, nearbyCandidates)
+
+            val nearbyBest = nearbyCandidates.maxByOrNull { it.second }
+            if (nearbyBest != null && nearbyBest.second > (best?.second ?: 0)) {
+                val element = nearbyBest.first.toUiElement()
+                Log.d(TAG, "At ($x,$y): exact=${candidates.size} candidates (best score=${best?.second}), used nearby: ${element.text ?: element.resourceId ?: element.className} score=${nearbyBest.second}")
+                nearbyCandidates.forEach { it.first.recycle() }
+                candidates.forEach { it.first.recycle() }
+                rootNode.recycle()
+                onTreeAccess?.invoke()
+                return element
+            }
+            nearbyCandidates.forEach { it.first.recycle() }
+        }
+
+        val element = best?.first?.toUiElement() ?: UiElement()
         Log.d(TAG, "At ($x,$y): ${candidates.size} candidates, best=${element.text ?: element.resourceId ?: element.className} score=${best?.second}")
 
         candidates.forEach { it.first.recycle() }
@@ -68,6 +88,28 @@ class ElementResolver(
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             collectScoredNodesAt(child, x, y, results)
+            child.recycle()
+        }
+    }
+
+    /** Collect nodes whose bounds are within `margin` pixels of (x,y) — for near-miss taps */
+    private fun collectScoredNodesNear(node: AccessibilityNodeInfo, x: Int, y: Int, margin: Int, results: MutableList<Pair<AccessibilityNodeInfo, Int>>) {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        // Expand bounds by margin for the containment check
+        val expanded = Rect(bounds.left - margin, bounds.top - margin, bounds.right + margin, bounds.bottom + margin)
+        if (!expanded.contains(x, y)) return
+
+        // Only add if the node is meaningful (has text, id, or description)
+        val score = nodeScore(node)
+        if (score >= 5) {
+            results.add(Pair(AccessibilityNodeInfo.obtain(node), score))
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectScoredNodesNear(child, x, y, margin, results)
             child.recycle()
         }
     }

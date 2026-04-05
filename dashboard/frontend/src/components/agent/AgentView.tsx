@@ -134,6 +134,9 @@ export function AgentView() {
         </div>
       </div>
 
+      {/* Device Settings */}
+      <DeviceSettings serial={selectedDevice} />
+
       {/* Log */}
       <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4 flex-1 min-h-0 flex flex-col">
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 shrink-0">Activity Log</h3>
@@ -177,6 +180,85 @@ function StatusBadge({ label, active }: { label: string; active: boolean }) {
     <div className="flex items-center gap-1.5">
       <span className={`w-2 h-2 rounded-full ${active ? 'bg-green-400' : 'bg-slate-600'}`} />
       <span className={`text-[11px] ${active ? 'text-green-400' : 'text-slate-600'}`}>{label}</span>
+    </div>
+  );
+}
+
+const SETTINGS_META: { key: string; label: string; group: string }[] = [
+  { key: 'show_touches', label: 'Show taps', group: 'Input' },
+  { key: 'pointer_location', label: 'Pointer location', group: 'Input' },
+  { key: 'show_layout_bounds', label: 'Show layout bounds', group: 'Drawing' },
+  { key: 'window_animation_scale', label: 'Window animations', group: 'Animations' },
+  { key: 'transition_animation_scale', label: 'Transition animations', group: 'Animations' },
+  { key: 'animator_duration_scale', label: 'Animator duration', group: 'Animations' },
+  { key: 'stay_awake', label: 'Stay awake (plugged in)', group: 'Other' },
+];
+
+function DeviceSettings({ serial }: { serial: string }) {
+  const [settings, setSettings] = useState<Record<string, boolean>>({});
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const s = await api.getDeviceSettings(serial);
+      setSettings(s);
+    } catch {}
+  };
+
+  useEffect(() => { load(); }, [serial]);
+
+  const toggle = async (key: string) => {
+    const newVal = !settings[key];
+    setToggling(key);
+    setSettings(prev => ({ ...prev, [key]: newVal }));
+    try {
+      await api.setDeviceSetting(serial, key, newVal);
+    } catch {
+      setSettings(prev => ({ ...prev, [key]: !newVal }));
+    }
+    setToggling(null);
+  };
+
+  // Group settings
+  const groups: Record<string, typeof SETTINGS_META> = {};
+  for (const s of SETTINGS_META) {
+    (groups[s.group] ??= []).push(s);
+  }
+
+  return (
+    <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4 shrink-0">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-white">Device Settings</h2>
+        <button onClick={load} className="text-[10px] text-slate-500 hover:text-white transition-colors">
+          Refresh
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-x-8 gap-y-3">
+        {Object.entries(groups).map(([group, items]) => (
+          <div key={group}>
+            <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-1.5">{group}</div>
+            <div className="flex flex-col gap-1.5">
+              {items.map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer group">
+                  <button
+                    onClick={() => toggle(key)}
+                    disabled={toggling === key}
+                    className={`w-7 h-4 rounded-full relative transition-colors ${
+                      settings[key] ? 'bg-blue-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
+                      settings[key] ? 'left-3.5' : 'left-0.5'
+                    }`} />
+                  </button>
+                  <span className="text-[10px] text-slate-400 group-hover:text-white transition-colors">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

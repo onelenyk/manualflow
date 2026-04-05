@@ -21,6 +21,9 @@ export const api = {
   stopMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/stop`, { method: 'POST' }),
   getMirrorStatus: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/status`),
   screenshotUrl: (serial: string) => `/api/devices/${serial}/screenshot?t=${Date.now()}`,
+  getDeviceSettings: (serial: string) => fetchJson<Record<string, boolean>>(`/devices/${serial}/settings`),
+  setDeviceSetting: (serial: string, key: string, value: boolean) =>
+    fetchJson<any>(`/devices/${serial}/settings`, { method: 'POST', body: JSON.stringify({ key, value }) }),
 
   // Recording
   startRecording: (body: { deviceSerial?: string; appId?: string }) =>

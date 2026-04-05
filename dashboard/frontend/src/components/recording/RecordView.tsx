@@ -16,6 +16,8 @@ export function RecordView() {
   const [appId, setAppId] = useState('com.unknown.app');
   const [copied, setCopied] = useState(false);
   const [lastClickedId, setLastClickedId] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Connect SSE on mount
@@ -29,8 +31,55 @@ export function RecordView() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [interactions.length]);
 
-  const visible = interactions.filter(i => !i.filteredAsKeyboardTap);
+  const visible = interactions.filter(i => {
+    if (i.filteredAsKeyboardTap) return false;
+
+    // Type filter
+    const actionType = i.touchAction?.type;
+    const eventType = i.source === 'accessibility' && i.accessibilityEvents[0]?.type;
+    const type = actionType || eventType || 'unknown';
+    if (hiddenTypes.has(type)) return false;
+
+    // Text search
+    if (searchText) {
+      const q = searchText.toLowerCase();
+      const el = i.element;
+      const a11y = i.accessibilityEvents;
+      const matchesElement = el && (
+        el.text?.toLowerCase().includes(q) ||
+        el.resourceId?.toLowerCase().includes(q) ||
+        el.contentDescription?.toLowerCase().includes(q) ||
+        el.className?.toLowerCase().includes(q)
+      );
+      const matchesA11y = a11y.some((e: any) =>
+        e.text?.toLowerCase().includes(q) ||
+        e.resourceId?.toLowerCase().includes(q) ||
+        e.packageName?.toLowerCase().includes(q)
+      );
+      const matchesAction = actionType?.toLowerCase().includes(q);
+      if (!matchesElement && !matchesA11y && !matchesAction) return false;
+    }
+
+    return true;
+  });
   const selectedCount = selectedIds.size;
+
+  // Collect available types for filter chips
+  const typeCounts: Record<string, number> = {};
+  for (const i of interactions) {
+    if (i.filteredAsKeyboardTap) continue;
+    const type = i.touchAction?.type || (i.source === 'accessibility' && i.accessibilityEvents[0]?.type) || 'unknown';
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+  }
+
+  const toggleType = (type: string) => {
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
 
   const handleCopy = async () => {
     if (!yaml) return;
@@ -121,6 +170,49 @@ export function RecordView() {
             <span className="text-slate-600 ml-auto">
               {selectedCount > 0 ? `${selectedCount} selected` : 'Click to select, Shift+click for range'}
             </span>
+          </div>
+        )}
+
+        {/* Filters */}
+        {interactions.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Search */}
+            <input
+              type="text"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder="Filter..."
+              className="w-36 px-2 py-1 text-[10px] bg-slate-800 border border-slate-700 text-slate-300 rounded-md focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+            />
+
+            {/* Type chips */}
+            <div className="flex gap-1">
+              {Object.entries(typeCounts).map(([type, count]) => {
+                const hidden = hiddenTypes.has(type);
+                return (
+                  <button
+                    key={type}
+                    onClick={() => toggleType(type)}
+                    className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-all ${
+                      hidden
+                        ? 'bg-slate-800/50 text-slate-600 line-through'
+                        : `${typeChipColor(type)} text-white`
+                    }`}
+                  >
+                    {type} <span className="opacity-60">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {(hiddenTypes.size > 0 || searchText) && (
+              <button
+                onClick={() => { setHiddenTypes(new Set()); setSearchText(''); }}
+                className="text-[9px] text-slate-500 hover:text-white"
+              >
+                Reset
+              </button>
+            )}
           </div>
         )}
 
@@ -319,6 +411,15 @@ function YamlTab({ yaml, onCopy, copied }: { yaml: string; onCopy: () => void; c
 
 function Empty({ text }: { text: string }) {
   return <div className="text-slate-600 text-xs text-center py-12">{text}</div>;
+}
+
+function typeChipColor(type: string): string {
+  const m: Record<string, string> = {
+    tap: 'bg-blue-500/80', swipe: 'bg-teal-500/80', scroll: 'bg-indigo-500/80',
+    longPress: 'bg-orange-500/80', click: 'bg-purple-500/80', textChanged: 'bg-amber-500/80',
+    windowChanged: 'bg-pink-500/80',
+  };
+  return m[type] || 'bg-slate-600';
 }
 
 function F({ label, value, color }: { label: string; value: string; color: string }) {

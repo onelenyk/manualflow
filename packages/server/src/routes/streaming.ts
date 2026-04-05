@@ -17,6 +17,12 @@ export function streamingRoutes(state: AppState) {
     });
   });
 
+  // REST: get all interactions (snapshot)
+  router.get('/stream/interactions/list', (_req, res) => {
+    const ds = state.deviceStream;
+    res.json(ds?.interactions ?? []);
+  });
+
   // SSE stream for RecordedInteraction objects
   router.get('/stream/interactions', (req, res) => {
     res.writeHead(200, {

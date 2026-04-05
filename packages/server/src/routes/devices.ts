@@ -163,5 +163,81 @@ export function deviceRoutes(state: AppState) {
     }
   });
 
+  // --- Developer Settings ---
+
+  const DEV_SETTINGS: Record<string, { get: string[]; set: (v: boolean) => string[] }> = {
+    show_touches: {
+      get: ['shell', 'settings', 'get', 'system', 'show_touches'],
+      set: (v) => ['shell', 'settings', 'put', 'system', 'show_touches', v ? '1' : '0'],
+    },
+    pointer_location: {
+      get: ['shell', 'settings', 'get', 'system', 'pointer_location'],
+      set: (v) => ['shell', 'settings', 'put', 'system', 'pointer_location', v ? '1' : '0'],
+    },
+    show_layout_bounds: {
+      get: ['shell', 'getprop', 'debug.layout'],
+      set: (v) => ['shell', 'setprop', 'debug.layout', v ? 'true' : 'false'],
+    },
+    window_animation_scale: {
+      get: ['shell', 'settings', 'get', 'global', 'window_animation_scale'],
+      set: (v) => ['shell', 'settings', 'put', 'global', 'window_animation_scale', v ? '1.0' : '0.0'],
+    },
+    transition_animation_scale: {
+      get: ['shell', 'settings', 'get', 'global', 'transition_animation_scale'],
+      set: (v) => ['shell', 'settings', 'put', 'global', 'transition_animation_scale', v ? '1.0' : '0.0'],
+    },
+    animator_duration_scale: {
+      get: ['shell', 'settings', 'get', 'global', 'animator_duration_scale'],
+      set: (v) => ['shell', 'settings', 'put', 'global', 'animator_duration_scale', v ? '1.0' : '0.0'],
+    },
+    stay_awake: {
+      get: ['shell', 'settings', 'get', 'global', 'stay_on_while_plugged_in'],
+      set: (v) => ['shell', 'settings', 'put', 'global', 'stay_on_while_plugged_in', v ? '7' : '0'],
+    },
+  };
+
+  router.get('/devices/:serial/settings', async (req, res) => {
+    const s = req.params.serial;
+    const result: Record<string, boolean> = {};
+
+    for (const [key, def] of Object.entries(DEV_SETTINGS)) {
+      try {
+        const val = await adbExec('-s', s, ...def.get);
+        if (key === 'show_layout_bounds') {
+          result[key] = val === 'true';
+        } else if (key.includes('animation') || key.includes('animator')) {
+          result[key] = parseFloat(val) !== 0;
+        } else {
+          result[key] = val === '1' || val === '7';
+        }
+      } catch {
+        result[key] = false;
+      }
+    }
+
+    res.json(result);
+  });
+
+  router.post('/devices/:serial/settings', async (req, res) => {
+    const s = req.params.serial;
+    const { key, value } = req.body as { key: string; value: boolean };
+
+    const def = DEV_SETTINGS[key];
+    if (!def) return res.status(400).json({ error: `Unknown setting: ${key}` });
+
+    try {
+      await adbExec('-s', s, ...def.set(value));
+
+      // Layout bounds needs a UI refresh to take effect
+      if (key === 'show_layout_bounds') {
+        await adbExec('-s', s, 'shell', 'service', 'call', 'activity', '1599295570').catch(() => {});
+      }
+
+      res.json({ ok: true, key, value });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return router;
 }

@@ -44,7 +44,7 @@ app.use('/api', debugRoutes(state));
 app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
 
-const frontendDist = path.resolve(__dirname, '../../../dashboard/frontend/dist');
+const frontendDist = path.resolve(__dirname, '../../../dashboard/src/main/resources/static');
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
