@@ -14,6 +14,13 @@ export interface InputDeviceRange {
 
 export type TouchPhase = 'idle' | 'touchActive' | 'swiping';
 
+/** Emitted on BTN_TOUCH DOWN + first coordinates — for pre-fetching element */
+export interface TouchStartHint {
+  pixelX: number;
+  pixelY: number;
+  timestamp: number;
+}
+
 export interface TouchFingerState {
   phase: TouchPhase;
   startTimestamp: number;

@@ -18,6 +18,7 @@ interface StreamStore {
   connected: boolean;
   interactions: Interaction[];
   selectedIds: Set<number>;
+  ignoredIds: Set<number>;
   yaml: string;
   exporting: boolean;
   error: string | null;
@@ -33,6 +34,12 @@ interface StreamStore {
   selectNone: () => void;
   selectRange: (fromId: number, toId: number) => void;
 
+  // Ignore
+  toggleIgnore: (id: number) => void;
+  ignoreAllOfType: (type: string) => void;
+  ignoreAllWithContent: (content: string) => void;
+  clearIgnored: () => void;
+
   // Actions
   exportYaml: (appId: string) => Promise<void>;
   clearInteractions: () => Promise<void>;
@@ -43,6 +50,7 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
   connected: false,
   interactions: [],
   selectedIds: new Set(),
+  ignoredIds: new Set(),
   yaml: '',
   exporting: false,
   error: null,
@@ -121,7 +129,7 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
     set(s => ({
       selectedIds: new Set(
         s.interactions
-          .filter(i => !i.filteredAsKeyboardTap && i.status === 'complete')
+          .filter(i => !i.filteredAsKeyboardTap && i.status === 'complete' && !s.ignoredIds.has(i.id))
           .map(i => i.id)
       ),
     }));
@@ -134,11 +142,66 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
   selectRange: (fromId: number, toId: number) => {
     set(s => {
       const ids = s.interactions
-        .filter(i => !i.filteredAsKeyboardTap && i.status === 'complete')
+        .filter(i => !i.filteredAsKeyboardTap && i.status === 'complete' && !s.ignoredIds.has(i.id))
         .filter(i => i.id >= fromId && i.id <= toId)
         .map(i => i.id);
       return { selectedIds: new Set(ids) };
     });
+  },
+
+  toggleIgnore: (id: number) => {
+    set(s => {
+      const next = new Set(s.ignoredIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      // Also deselect if ignoring
+      const sel = new Set(s.selectedIds);
+      sel.delete(id);
+      return { ignoredIds: next, selectedIds: sel };
+    });
+  },
+
+  ignoreAllOfType: (type: string) => {
+    set(s => {
+      const nextIgnored = new Set(s.ignoredIds);
+      const nextSelected = new Set(s.selectedIds);
+      for (const i of s.interactions) {
+        const iType = i.touchAction?.type || (i.source === 'accessibility' && i.accessibilityEvents[0]?.type) || 'unknown';
+        if (iType === type) {
+          nextIgnored.add(i.id);
+          nextSelected.delete(i.id);
+        }
+      }
+      return { ignoredIds: nextIgnored, selectedIds: nextSelected };
+    });
+  },
+
+  ignoreAllWithContent: (content: string) => {
+    set(s => {
+      const q = content.toLowerCase();
+      const nextIgnored = new Set(s.ignoredIds);
+      const nextSelected = new Set(s.selectedIds);
+      for (const i of s.interactions) {
+        const matches =
+          i.accessibilityEvents.some((e: any) =>
+            e.text?.toLowerCase().includes(q) ||
+            e.packageName?.toLowerCase().includes(q) ||
+            e.className?.toLowerCase().includes(q)
+          ) ||
+          i.element?.text?.toLowerCase().includes(q) ||
+          i.element?.className?.toLowerCase().includes(q) ||
+          i.element?.resourceId?.toLowerCase().includes(q);
+        if (matches) {
+          nextIgnored.add(i.id);
+          nextSelected.delete(i.id);
+        }
+      }
+      return { ignoredIds: nextIgnored, selectedIds: nextSelected };
+    });
+  },
+
+  clearIgnored: () => {
+    set({ ignoredIds: new Set() });
   },
 
   exportYaml: async (appId: string) => {
@@ -166,7 +229,7 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
   clearInteractions: async () => {
     try {
       await fetch('/api/stream/clear', { method: 'POST' });
-      set({ interactions: [], selectedIds: new Set(), yaml: '' });
+      set({ interactions: [], selectedIds: new Set(), ignoredIds: new Set(), yaml: '' });
     } catch {}
   },
 

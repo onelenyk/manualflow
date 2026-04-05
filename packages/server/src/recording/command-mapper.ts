@@ -15,9 +15,13 @@ const NOISE_NAMES = new Set([
   'RelativeLayout', 'ConstraintLayout',
 ]);
 
+// Timing thresholds
+const DOUBLE_TAP_MS = 400;
+const ANIMATION_GAP_MS = 3000;
+
 /**
- * Pure function: converts a single RecordedInteraction into MaestroCommand(s).
- * No side effects, no state — all data comes from the interaction object.
+ * Single interaction → commands (no sequence context).
+ * Used for real-time preview in the frontend.
  */
 export function mapInteractionToCommands(interaction: RecordedInteraction): MaestroCommand[] {
   if (interaction.filteredAsKeyboardTap) return [];
@@ -33,9 +37,85 @@ export function mapInteractionToCommands(interaction: RecordedInteraction): Maes
   return [];
 }
 
-/** Batch version: map all interactions and flatten */
+/**
+ * Sequence-aware batch mapping. Looks at adjacent interactions to produce
+ * smarter commands: scrollUntilVisible, hideKeyboard, doubleTap, waitForAnimation.
+ */
 export function mapInteractionsToCommands(interactions: RecordedInteraction[]): MaestroCommand[] {
-  return interactions.flatMap(mapInteractionToCommands);
+  const commands: MaestroCommand[] = [];
+  let i = 0;
+
+  while (i < interactions.length) {
+    const curr = interactions[i];
+    const next = i + 1 < interactions.length ? interactions[i + 1] : null;
+    const prev = i > 0 ? interactions[i - 1] : null;
+
+    if (curr.filteredAsKeyboardTap) { i++; continue; }
+
+    // --- Pattern: long gap → waitForAnimationToEnd ---
+    if (prev && !prev.filteredAsKeyboardTap) {
+      const gap = curr.timestampMs - prev.timestampMs;
+      if (gap > ANIMATION_GAP_MS) {
+        commands.push({ type: 'waitForAnimationToEnd' });
+      }
+    }
+
+    // --- Pattern: keyboard was open, now closed, non-editable tap → hideKeyboard ---
+    if (prev?.keyboardState?.open && !curr.keyboardState?.open && curr.touchAction) {
+      const isEditableTap = curr.element?.editable ||
+        curr.element?.className?.includes('EditText') ||
+        curr.element?.className?.includes('TextField');
+      if (!isEditableTap) {
+        commands.push({ type: 'hideKeyboard' });
+      }
+    }
+
+    // --- Pattern: double tap (two taps on same element within threshold) ---
+    if (curr.touchAction?.type === 'tap' && next?.touchAction?.type === 'tap') {
+      const gap = next.timestampMs - curr.timestampMs;
+      if (gap < DOUBLE_TAP_MS && sameElement(curr.element, next.element)) {
+        const selector = selectBestSelector(curr.element ?? null, curr.touchAction.x, curr.touchAction.y);
+        commands.push({ type: 'doubleTapOn', selector });
+        i += 2; // skip both
+        continue;
+      }
+    }
+
+    // --- Pattern: scroll(s) → tap → scrollUntilVisible ---
+    if (curr.touchAction?.type === 'scroll' && next?.touchAction?.type === 'tap' && next.element) {
+      // Consume all consecutive scrolls in the same direction
+      const scrollDir = (curr.touchAction as ScrollAction).direction;
+      let j = i + 1;
+      while (j < interactions.length && interactions[j].touchAction?.type === 'scroll') {
+        j++;
+      }
+      // Check if the next non-scroll interaction is a tap with an element
+      const tapAfterScroll = j < interactions.length ? interactions[j] : null;
+      if (tapAfterScroll?.touchAction?.type === 'tap' && tapAfterScroll.element) {
+        const selector = selectBestSelector(tapAfterScroll.element, tapAfterScroll.touchAction.x, tapAfterScroll.touchAction.y);
+        // Only use scrollUntilVisible if we have a meaningful selector (not point)
+        if (selector.kind !== 'point') {
+          commands.push({ type: 'scrollUntilVisible', selector, direction: scrollDir });
+          commands.push({ type: 'tapOn', selector });
+          // Also append text input / window assert from the tap interaction
+          appendCorrelatedCommands(tapAfterScroll, commands);
+          i = j + 1; // skip all scrolls + the tap
+          continue;
+        }
+      }
+    }
+
+    // --- Default: map single interaction ---
+    if (curr.source === 'getevent' && curr.touchAction) {
+      commands.push(...mapTouchInteraction(curr));
+    } else if (curr.source === 'accessibility') {
+      commands.push(...mapAccessibilityInteraction(curr));
+    }
+
+    i++;
+  }
+
+  return commands;
 }
 
 // --- Touch-initiated interactions ---
@@ -59,15 +139,17 @@ function mapTouchInteraction(interaction: RecordedInteraction): MaestroCommand[]
       break;
   }
 
-  // Check for text input from correlated accessibility events
-  const textCommand = extractTextInput(interaction);
-  if (textCommand) commands.push(textCommand);
+  appendCorrelatedCommands(interaction, commands);
+  return commands;
+}
 
-  // Check for window change from correlated accessibility events
+/** Append text input + window assert from correlated a11y events */
+function appendCorrelatedCommands(interaction: RecordedInteraction, commands: MaestroCommand[]): void {
+  const textCommands = extractTextInput(interaction);
+  commands.push(...textCommands);
+
   const assertCommand = extractWindowAssert(interaction);
   if (assertCommand) commands.push(assertCommand);
-
-  return commands;
 }
 
 function mapTap(interaction: RecordedInteraction): MaestroCommand[] {
@@ -97,7 +179,8 @@ function mapSwipe(interaction: RecordedInteraction): MaestroCommand {
 
 function mapScroll(interaction: RecordedInteraction): MaestroCommand {
   const action = interaction.touchAction as ScrollAction;
-  // FIX: pass through the direction instead of emitting bare { type: 'scroll' }
+  // Use Maestro's scroll (not swipe) — scroll operates on the scrollable container
+  // Maestro scroll direction = direction content moves, which matches our detection
   return { type: 'swipe', direction: action.direction };
 }
 
@@ -119,8 +202,8 @@ function mapAccessibilityInteraction(interaction: RecordedInteraction): MaestroC
         break;
       }
       case 'textChanged': {
-        const text = extractFinalText(interaction.accessibilityEvents);
-        if (text) commands.push({ type: 'inputText', text });
+        const textCmds = extractTextInputFromEvents(interaction.accessibilityEvents);
+        commands.push(...textCmds);
         return commands; // all textChanged events handled at once
       }
       case 'windowChanged': {
@@ -134,16 +217,70 @@ function mapAccessibilityInteraction(interaction: RecordedInteraction): MaestroC
   return commands;
 }
 
-// --- Helpers: text input extraction ---
+// --- Text input extraction ---
 
-function extractTextInput(interaction: RecordedInteraction): MaestroCommand | null {
+function extractTextInput(interaction: RecordedInteraction): MaestroCommand[] {
   const textEvents = interaction.accessibilityEvents.filter(e => e.type === 'textChanged');
-  if (textEvents.length === 0) return null;
+  if (textEvents.length === 0) return [];
+  return extractTextInputFromEvents(textEvents);
+}
 
+/**
+ * Analyze textChanged events to produce eraseText + inputText as needed.
+ * Handles: fresh input, replacement, deletion, masked passwords.
+ */
+function extractTextInputFromEvents(events: AccessibilityEventData[]): MaestroCommand[] {
+  const textEvents = events.filter(e => e.type === 'textChanged');
+  if (textEvents.length === 0) return [];
+
+  const commands: MaestroCommand[] = [];
+
+  // Get the initial state (what was in the field before any changes)
+  const firstEvent = textEvents[0];
+  const initialText = firstEvent.beforeText || '';
+
+  // Get the final state
   const finalText = extractFinalText(textEvents);
-  if (!finalText) return null;
+  if (!finalText && !initialText) return [];
 
-  return { type: 'inputText', text: finalText };
+  // Detect masked/password fields: all bullets or dots
+  if (finalText && /^[•·*●\u2022\u25CF\u2027]+$/.test(finalText)) {
+    // Password field — we can't know the actual text, emit a placeholder
+    if (initialText) {
+      commands.push({ type: 'eraseText', chars: initialText.length });
+    }
+    commands.push({ type: 'inputText', text: '<PASSWORD>' });
+    return commands;
+  }
+
+  // If field had existing text that's different from what we're typing
+  if (initialText && finalText && initialText !== finalText) {
+    // Check if user cleared and retyped, or appended
+    if (!finalText.startsWith(initialText)) {
+      // Text was replaced — need to clear first
+      commands.push({ type: 'eraseText', chars: initialText.length });
+    }
+  }
+
+  if (finalText) {
+    // If we erased first, emit the full new text
+    // If we didn't erase, emit only what was added (if it was an append)
+    const erasedFirst = commands.some(c => c.type === 'eraseText');
+    if (erasedFirst || !initialText) {
+      commands.push({ type: 'inputText', text: finalText });
+    } else if (finalText.startsWith(initialText)) {
+      // Append — only emit the new part
+      const added = finalText.slice(initialText.length);
+      if (added) commands.push({ type: 'inputText', text: added });
+    } else {
+      commands.push({ type: 'inputText', text: finalText });
+    }
+  } else if (initialText) {
+    // Text was deleted entirely
+    commands.push({ type: 'eraseText', chars: initialText.length });
+  }
+
+  return commands;
 }
 
 /** Get the last non-empty text value from a sequence of textChanged events */
@@ -156,13 +293,12 @@ function extractFinalText(events: AccessibilityEventData[]): string | null {
   return null;
 }
 
-// --- Helpers: window assertion ---
+// --- Window assertion ---
 
 function extractWindowAssert(interaction: RecordedInteraction): MaestroCommand | null {
   const windowEvents = interaction.accessibilityEvents.filter(e => e.type === 'windowChanged');
   if (windowEvents.length === 0) return null;
 
-  // Use the last window change event
   const last = windowEvents[windowEvents.length - 1];
   return buildWindowAssert(last);
 }
@@ -185,13 +321,12 @@ function buildWindowAssert(event: AccessibilityEventData): MaestroCommand | null
   };
 }
 
-// --- Helpers: selectors ---
+// --- Helpers ---
 
 function buildAccessibilitySelector(event: AccessibilityEventData, element?: UiElement): TapOnSelector {
   if (element) {
     return selectBestSelector(element, 0, 0);
   }
-  // Build from event data directly
   if (event.resourceId) {
     const id = event.resourceId.includes(':id/')
       ? event.resourceId.split(':id/')[1]
@@ -207,9 +342,21 @@ function buildAccessibilitySelector(event: AccessibilityEventData, element?: UiE
   return { kind: 'point', x: 0, y: 0 };
 }
 
+function sameElement(a?: UiElement | null, b?: UiElement | null): boolean {
+  if (!a || !b) return false;
+  // Match by ID first
+  if (a.resourceId && a.resourceId === b.resourceId) return true;
+  // Match by text
+  if (a.text && a.text === b.text) return true;
+  // Match by bounds (same exact position)
+  if (a.bounds && b.bounds &&
+    a.bounds.left === b.bounds.left && a.bounds.top === b.bounds.top &&
+    a.bounds.right === b.bounds.right && a.bounds.bottom === b.bounds.bottom) return true;
+  return false;
+}
+
 function toPercent(x: number, y: number, screenWidth: number, screenHeight: number): string {
   const px = Math.round((x / screenWidth) * 100);
   const py = Math.round((y / screenHeight) * 100);
   return `${px}%, ${py}%`;
 }
-

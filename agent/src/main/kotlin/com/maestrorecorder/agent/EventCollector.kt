@@ -25,6 +25,9 @@ class EventCollector(private val uiAutomation: UiAutomation) {
     private val lastScrollY = mutableMapOf<String, Int>()
     private val lastScrollX = mutableMapOf<String, Int>()
 
+    // Track last known text per editable node for textSelection-based detection
+    private val lastKnownText = mutableMapOf<String, String>()
+
     private val listener = UiAutomation.OnAccessibilityEventListener { event ->
         onAccessibilityEvent(event)
     }
@@ -104,7 +107,7 @@ class EventCollector(private val uiAutomation: UiAutomation) {
     }
 
     private fun convertEvent(event: AccessibilityEvent): JSONObject? {
-        val type = when (event.eventType) {
+        var type = when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_CLICKED -> "click"
             AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> "longClick"
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> "scroll"
@@ -117,17 +120,44 @@ class EventCollector(private val uiAutomation: UiAutomation) {
             else -> return null
         }
 
-        // Skip noisy contentChanged events (fires on every frame)
+        // Filter contentChanged — only keep text changes on editable fields (Compose fallback)
         if (type == "contentChanged") {
-            // Only keep if it's a meaningful content change (new text, structure change)
             val contentChangeTypes = event.contentChangeTypes
-            if (contentChangeTypes != 0 &&
-                contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT == 0 &&
-                contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE == 0) {
+            val hasTextChange = contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT != 0
+            if (!hasTextChange) return null
+
+            // Only keep if the source is an editable node
+            val source = event.source
+            if (source != null) {
+                val editable = source.isEditable
+                source.recycle()
+                if (!editable) return null
+                // Promote to textChanged so the pipeline handles it uniformly
+                type = "textChanged"
+            } else {
                 return null
             }
-            // Still skip most contentChanged — too noisy
-            return null
+        }
+
+        // Tertiary text detection: textSelection where actual text changed (Compose password fields, etc.)
+        if (type == "textSelection") {
+            val source = event.source
+            if (source != null && source.isEditable) {
+                val currentText = source.text?.toString() ?: ""
+                val nodeKey = source.viewIdResourceName ?: source.hashCode().toString()
+                val previousText = lastKnownText[nodeKey]
+                source.recycle()
+                if (previousText != null && currentText != previousText && currentText.isNotEmpty()) {
+                    lastKnownText[nodeKey] = currentText
+                    type = "textChanged"
+                } else {
+                    lastKnownText[nodeKey] = currentText
+                    return null
+                }
+            } else {
+                source?.recycle()
+                return null
+            }
         }
 
         // Skip focused events on non-interactive views
@@ -192,6 +222,12 @@ class EventCollector(private val uiAutomation: UiAutomation) {
             json.put("beforeText", event.beforeText?.toString() ?: "")
             json.put("addedCount", event.addedCount)
             json.put("removedCount", event.removedCount)
+            // Track for tertiary detection baseline
+            val text = json.optString("text", "")
+            val nodeKey = json.optString("resourceId", "") + json.optString("className", "")
+            if (text.isNotEmpty() && nodeKey.isNotEmpty()) {
+                lastKnownText[nodeKey] = text
+            }
         }
 
         Log.d(TAG, "Event: $type - ${json.optString("text", "").take(40)}")

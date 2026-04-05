@@ -31,7 +31,13 @@
       "Bash(curl -s -X POST http://127.0.0.1:50051/element-at -H \"Content-Type: application/json\" -d '{\"x\":540,\"y\":500}')",
       "Bash(python3 -m json.tool)",
       "Bash(curl -s http://127.0.0.1:50051/tree)",
-      "Bash(python3 -c \" import json,sys tree = json.load\\(sys.stdin\\) for i,e in enumerate\\(tree\\): if e.get\\('editable'\\) or 'Edit' in \\(e.get\\('className'\\) or ''\\) or 'Field' in \\(e.get\\('className'\\) or ''\\): print\\(f'#{i} {e.get\\(\\\\\"className\\\\\"\\)} text=\\\\\"{e.get\\(\\\\\"text\\\\\",\\\\\"\\\\\"\\)}\\\\\" id={e.get\\(\\\\\"resourceId\\\\\",\\\\\"\\\\\"\\)} editable={e.get\\(\\\\\"editable\\\\\"\\)} bounds={e.get\\(\\\\\"bounds\\\\\"\\)}'\\) if not any\\(e.get\\('editable'\\) or 'Edit' in \\(e.get\\('className'\\) or ''\\) for e in tree\\): print\\('NO EDITABLE ELEMENTS FOUND'\\) print\\(f'Classes on screen: {set\\(e.get\\(\\\\\"className\\\\\",\\\\\"\\\\\"\\).split\\(\\\\\".\\\\\"\\)[-1] for e in tree\\)}'\\) \")"
+      "Bash(python3 -c \" import json,sys tree = json.load\\(sys.stdin\\) for i,e in enumerate\\(tree\\): if e.get\\('editable'\\) or 'Edit' in \\(e.get\\('className'\\) or ''\\) or 'Field' in \\(e.get\\('className'\\) or ''\\): print\\(f'#{i} {e.get\\(\\\\\"className\\\\\"\\)} text=\\\\\"{e.get\\(\\\\\"text\\\\\",\\\\\"\\\\\"\\)}\\\\\" id={e.get\\(\\\\\"resourceId\\\\\",\\\\\"\\\\\"\\)} editable={e.get\\(\\\\\"editable\\\\\"\\)} bounds={e.get\\(\\\\\"bounds\\\\\"\\)}'\\) if not any\\(e.get\\('editable'\\) or 'Edit' in \\(e.get\\('className'\\) or ''\\) for e in tree\\): print\\('NO EDITABLE ELEMENTS FOUND'\\) print\\(f'Classes on screen: {set\\(e.get\\(\\\\\"className\\\\\",\\\\\"\\\\\"\\).split\\(\\\\\".\\\\\"\\)[-1] for e in tree\\)}'\\) \")",
+      "Bash(lsof -ti:2344)",
+      "Bash(xargs kill:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npx vite:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb -s 3B161JEHN01255 forward tcp:50051 tcp:50051)"
     ]
   },
   "teammateMode": "tmux"

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { execFile } from 'child_process';
-import type { RecordedInteraction, AccessibilityEventData } from '@maestro-recorder/shared';
+import type { RecordedInteraction, AccessibilityEventData, UiElement, UserAction } from '@maestro-recorder/shared';
 import { GeteventStream, discoverInputDevice } from '../recording/getevent-parser.js';
 import { TouchStateMachine } from '../recording/touch-state-machine.js';
 import { CoordinateConverter } from '../recording/coordinate-converter.js';
@@ -43,6 +43,8 @@ export class DeviceStream extends EventEmitter {
 
   private _interactions: RecordedInteraction[] = [];
   private _connected = false;
+  private prefetchedElement: UiElement | null = null;
+  private prefetchCoords: { x: number; y: number } | null = null;
 
   get connected(): boolean { return this._connected; }
   get interactions(): RecordedInteraction[] { return this._interactions; }
@@ -109,13 +111,26 @@ export class DeviceStream extends EventEmitter {
 
     // 7. Getevent stream
     this.touchStateMachine = new TouchStateMachine();
+
+    // Pre-fetch element on touch-down (before finger lifts and triggers navigation)
+    this.touchStateMachine.onTouchStart = (hint) => {
+      this.agent!.elementAt(hint.pixelX, hint.pixelY).then(element => {
+        if (element) {
+          this.prefetchedElement = element;
+          this.prefetchCoords = { x: hint.pixelX, y: hint.pixelY };
+        }
+      }).catch(() => {});
+    };
+
     this.geteventStream = new GeteventStream(serial, inputDevice.devicePath);
 
     this.geteventStream.on('line', (line: GeteventLine) => {
       this.emit('raw', line);
       const action = this.touchStateMachine.feed(line, this.converter!);
       if (action) {
-        this.collector!.onUserAction(action);
+        // Attach pre-fetched element if coordinates match
+        const prefetched = this.consumePrefetch(action);
+        this.collector!.onUserAction(action, prefetched);
       }
     });
 
@@ -198,6 +213,29 @@ export class DeviceStream extends EventEmitter {
   }
 
   // --- Private ---
+
+  /** Use pre-fetched element if action coordinates are close to prefetch coordinates */
+  private consumePrefetch(action: UserAction): UiElement | null {
+    if (!this.prefetchedElement || !this.prefetchCoords) return null;
+
+    let ax: number, ay: number;
+    if (action.type === 'tap' || action.type === 'longPress') {
+      ax = action.x; ay = action.y;
+    } else if (action.type === 'swipe' || action.type === 'scroll') {
+      ax = action.startX; ay = action.startY;
+    } else {
+      return null;
+    }
+
+    const dx = Math.abs(ax - this.prefetchCoords.x);
+    const dy = Math.abs(ay - this.prefetchCoords.y);
+    const element = (dx < 30 && dy < 30) ? this.prefetchedElement : null;
+
+    // Always consume — one use only
+    this.prefetchedElement = null;
+    this.prefetchCoords = null;
+    return element;
+  }
 
   private connectAccessibilityStream(): void {
     if (!this.agent) return;

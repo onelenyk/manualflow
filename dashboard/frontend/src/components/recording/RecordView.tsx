@@ -7,8 +7,9 @@ type Tab = 'interactions' | 'yaml';
 
 export function RecordView() {
   const {
-    connected, interactions, selectedIds, yaml, exporting, error,
+    connected, interactions, selectedIds, ignoredIds, yaml, exporting, error,
     connectSSE, disconnectSSE, toggleSelect, selectAll, selectNone,
+    toggleIgnore, ignoreAllOfType, ignoreAllWithContent, clearIgnored,
     exportYaml, clearInteractions,
   } = useStreamStore();
   const { selectedDevice } = useDeviceStore();
@@ -18,6 +19,8 @@ export function RecordView() {
   const [lastClickedId, setLastClickedId] = useState<number | null>(null);
   const [searchText, setSearchText] = useState('');
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const [showIgnored, setShowIgnored] = useState(false);
+  const [ignoreInput, setIgnoreInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Connect SSE on mount
@@ -31,8 +34,11 @@ export function RecordView() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [interactions.length]);
 
+  const ignoredCount = ignoredIds.size;
+
   const visible = interactions.filter(i => {
-    if (i.filteredAsKeyboardTap) return false;
+    // Ignored filter
+    if (ignoredIds.has(i.id) && !showIgnored) return false;
 
     // Type filter
     const actionType = i.touchAction?.type;
@@ -155,9 +161,9 @@ export function RecordView() {
           {error && <div className="mt-2 text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</div>}
         </div>
 
-        {/* Selection toolbar */}
+        {/* Toolbar */}
         {visible.length > 0 && (
-          <div className="flex items-center gap-2 shrink-0 text-[10px]">
+          <div className="flex items-center gap-2 shrink-0 text-[10px] flex-wrap">
             <button onClick={selectAll} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
               Select all
             </button>
@@ -167,8 +173,35 @@ export function RecordView() {
             <button onClick={clearInteractions} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
               Clear all
             </button>
+
+            <span className="text-slate-700">|</span>
+
+            {/* Ignore by content */}
+            <input
+              type="text"
+              value={ignoreInput}
+              onChange={e => setIgnoreInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && ignoreInput) { ignoreAllWithContent(ignoreInput); setIgnoreInput(''); } }}
+              placeholder="Ignore by content..."
+              className="w-32 px-2 py-1 text-[10px] bg-slate-800 border border-slate-700 text-slate-300 rounded-md focus:outline-none focus:border-red-500 placeholder:text-slate-600"
+            />
+
+            {ignoredCount > 0 && (
+              <>
+                <button
+                  onClick={() => setShowIgnored(!showIgnored)}
+                  className={`px-2 py-1 rounded-md transition-colors ${showIgnored ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-500 hover:text-white'}`}
+                >
+                  {showIgnored ? `Hide ${ignoredCount} ignored` : `Show ${ignoredCount} ignored`}
+                </button>
+                <button onClick={clearIgnored} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-md transition-colors">
+                  Unignore all
+                </button>
+              </>
+            )}
+
             <span className="text-slate-600 ml-auto">
-              {selectedCount > 0 ? `${selectedCount} selected` : 'Click to select, Shift+click for range'}
+              {selectedCount > 0 ? `${selectedCount} selected` : 'Click to select, Shift+click for range, right-click to ignore'}
             </span>
           </div>
         )}
@@ -243,7 +276,10 @@ export function RecordView() {
                 <InteractionList
                   interactions={visible}
                   selectedIds={selectedIds}
+                  ignoredIds={ignoredIds}
                   onRowClick={handleRowClick}
+                  onIgnore={toggleIgnore}
+                  onIgnoreType={ignoreAllOfType}
                 />
               )}
               {tab === 'yaml' && <YamlTab yaml={yaml} onCopy={handleCopy} copied={copied} />}
@@ -261,11 +297,17 @@ export function RecordView() {
 function InteractionList({
   interactions,
   selectedIds,
+  ignoredIds,
   onRowClick,
+  onIgnore,
+  onIgnoreType,
 }: {
   interactions: any[];
   selectedIds: Set<number>;
+  ignoredIds: Set<number>;
   onRowClick: (id: number, e: React.MouseEvent) => void;
+  onIgnore: (id: number) => void;
+  onIgnoreType: (type: string) => void;
 }) {
   if (interactions.length === 0) {
     return <Empty text="Interactions will appear as you use the device..." />;
@@ -279,20 +321,25 @@ function InteractionList({
     <div className="flex flex-col gap-1">
       {interactions.map((interaction) => {
         const selected = selectedIds.has(interaction.id);
+        const ignored = ignoredIds.has(interaction.id);
         const a = interaction.touchAction;
         const el = interaction.element;
         const a11y = interaction.accessibilityEvents;
         const isPending = interaction.status === 'pending';
         const isA11yOnly = interaction.source === 'accessibility';
+        const iType = a?.type || (isA11yOnly && a11y[0]?.type) || 'unknown';
 
         return (
           <div
             key={interaction.id}
-            onClick={(e) => onRowClick(interaction.id, e)}
+            onClick={(e) => { if (!ignored) onRowClick(interaction.id, e); }}
+            onContextMenu={(e) => { e.preventDefault(); onIgnore(interaction.id); }}
             className={`rounded-lg p-2.5 cursor-pointer transition-all select-none ${
-              selected
-                ? 'bg-blue-500/15 border border-blue-500/40'
-                : 'bg-slate-800/30 border border-transparent hover:bg-slate-800/50'
+              ignored
+                ? 'bg-red-500/5 border border-red-500/20 opacity-40'
+                : selected
+                  ? 'bg-blue-500/15 border border-blue-500/40'
+                  : 'bg-slate-800/30 border border-transparent hover:bg-slate-800/50'
             } ${isPending ? 'opacity-60' : ''}`}
           >
             {/* Row header */}
@@ -310,6 +357,13 @@ function InteractionList({
               {a && (
                 <span className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded ${actionColors[a.type] || 'bg-slate-500'}`}>
                   {a.type.toUpperCase()}
+                </span>
+              )}
+
+              {/* Keyboard tap badge */}
+              {interaction.filteredAsKeyboardTap && (
+                <span className="text-[9px] font-bold text-white px-1.5 py-0.5 rounded bg-slate-500">
+                  KBD
                 </span>
               )}
 
@@ -339,10 +393,23 @@ function InteractionList({
               )}
 
               {isPending && <span className="text-yellow-500 text-[8px] animate-pulse ml-auto">PENDING</span>}
+
+              {/* Ignore button */}
+              {!isPending && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onIgnore(interaction.id); }}
+                  className={`ml-auto text-[9px] px-1 rounded transition-colors ${
+                    ignored ? 'text-green-400 hover:text-green-300' : 'text-slate-600 hover:text-red-400'
+                  }`}
+                  title={ignored ? 'Unignore' : 'Ignore (or right-click)'}
+                >
+                  {ignored ? 'undo' : '\u00D7'}
+                </button>
+              )}
             </div>
 
-            {/* Expanded details when selected */}
-            {selected && (
+            {/* Expanded details when selected or ignored (to show undo context) */}
+            {(selected || ignored) && (
               <div className="ml-7 mt-1.5 space-y-1">
                 {/* Debug info */}
                 {a?.debug && (
@@ -381,6 +448,16 @@ function InteractionList({
                     ))}
                   </div>
                 )}
+
+                {/* Bulk ignore actions */}
+                <div className="flex gap-2 mt-1 pt-1 border-t border-slate-800/50">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onIgnoreType(iType); }}
+                    className="text-[9px] text-red-400/60 hover:text-red-400 transition-colors"
+                  >
+                    Ignore all "{iType}"
+                  </button>
+                </div>
               </div>
             )}
           </div>

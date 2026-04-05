@@ -45,21 +45,23 @@ class ElementResolver(
             return UiElement()
         }
 
-        // 1. Collect nodes at the exact tap point
+        // 1. Collect all nodes at the exact tap point
         val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>()
         collectScoredNodesAt(rootNode, x, y, candidates)
 
-        val best = candidates.maxByOrNull { it.second }
+        // 2. Pick best: among nodes with meaningful content (text/id/desc),
+        //    prefer the SMALLEST (most specific). Fall back to score for others.
+        val best = pickBestCandidate(candidates)
 
-        // 2. If the best hit is a generic container (low score), search nearby with margin
+        // 3. If the best hit is a generic container (low score), search nearby with margin
         if (best == null || best.second < 5) {
             val nearbyCandidates = mutableListOf<Pair<AccessibilityNodeInfo, Int>>()
             collectScoredNodesNear(rootNode, x, y, TAP_MARGIN_PX, nearbyCandidates)
 
-            val nearbyBest = nearbyCandidates.maxByOrNull { it.second }
+            val nearbyBest = pickBestCandidate(nearbyCandidates)
             if (nearbyBest != null && nearbyBest.second > (best?.second ?: 0)) {
                 val element = nearbyBest.first.toUiElement()
-                Log.d(TAG, "At ($x,$y): exact=${candidates.size} candidates (best score=${best?.second}), used nearby: ${element.text ?: element.resourceId ?: element.className} score=${nearbyBest.second}")
+                Log.d(TAG, "At ($x,$y): exact=${candidates.size} (best score=${best?.second}), used nearby: ${element.text ?: element.resourceId ?: element.className} score=${nearbyBest.second}")
                 nearbyCandidates.forEach { it.first.recycle() }
                 candidates.forEach { it.first.recycle() }
                 rootNode.recycle()
@@ -76,6 +78,35 @@ class ElementResolver(
         rootNode.recycle()
         onTreeAccess?.invoke()
         return element
+    }
+
+    /**
+     * Among candidates with meaningful content (text, resourceId, contentDescription),
+     * prefer the smallest node (most specific). Among others, prefer highest score.
+     */
+    private fun pickBestCandidate(candidates: List<Pair<AccessibilityNodeInfo, Int>>): Pair<AccessibilityNodeInfo, Int>? {
+        if (candidates.isEmpty()) return null
+
+        // Split: nodes with meaningful content vs generic containers
+        val meaningful = candidates.filter { (node, _) ->
+            !node.text.isNullOrEmpty() ||
+            !node.viewIdResourceName.isNullOrEmpty() ||
+            !node.contentDescription.isNullOrEmpty() ||
+            node.isEditable ||
+            node.isClickable
+        }
+
+        if (meaningful.isNotEmpty()) {
+            // Among meaningful nodes, pick the smallest by bounding box area
+            return meaningful.minByOrNull { (node, _) ->
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                bounds.width().toLong() * bounds.height().toLong()
+            }
+        }
+
+        // No meaningful nodes — fall back to highest score
+        return candidates.maxByOrNull { it.second }
     }
 
     private fun collectScoredNodesAt(node: AccessibilityNodeInfo, x: Int, y: Int, results: MutableList<Pair<AccessibilityNodeInfo, Int>>) {

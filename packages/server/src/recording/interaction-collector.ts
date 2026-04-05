@@ -55,8 +55,33 @@ export class InteractionCollector extends EventEmitter {
     };
   }
 
-  /** Handle a gesture from getevent + TouchStateMachine */
-  async onUserAction(action: UserAction): Promise<void> {
+  /** Handle a gesture from getevent + TouchStateMachine.
+   *  prefetchedElement: element looked up on touch-down (before navigation) */
+  async onUserAction(action: UserAction, prefetchedElement?: UiElement | null): Promise<void> {
+    // Check if this is a keyboard tap while we have a pending editable interaction
+    const isKbdTap = this.isKeyboardTap(action);
+    if (isKbdTap && this.pending && this.pending.status === 'pending' && this.isEditablePending()) {
+      // Don't finalize — keyboard taps are part of typing on the pending editable field
+      // Just extend the correlation timer so textChanged events keep attaching
+      this.extendCorrelationTimer();
+      // Still emit the keyboard tap as its own interaction for visibility
+      const kbdInteraction: RecordedInteraction = {
+        id: this.nextId++,
+        source: 'getevent',
+        status: 'complete',
+        timestampMs: action.timestampMs,
+        touchAction: action,
+        accessibilityEvents: [],
+        keyboardState: { ...this.keyboardState },
+        filteredAsKeyboardTap: true,
+        screenWidth: this.screenWidth,
+        screenHeight: this.screenHeight,
+      };
+      this.emit('interaction:created', kbdInteraction);
+      this.emit('interaction:complete', kbdInteraction);
+      return;
+    }
+
     // Finalize any existing pending interaction first
     this.finalizePending();
 
@@ -74,13 +99,9 @@ export class InteractionCollector extends EventEmitter {
       screenHeight: this.screenHeight,
     };
 
-    // Check keyboard filter
+    // Tag keyboard taps but don't filter — let the user decide
     if (this.isKeyboardTap(action)) {
       interaction.filteredAsKeyboardTap = true;
-      interaction.status = 'complete';
-      this.emit('interaction:created', interaction);
-      this.emit('interaction:complete', interaction);
-      return;
     }
 
     // Track for accessibility click dedup
@@ -90,8 +111,11 @@ export class InteractionCollector extends EventEmitter {
     this.pending = interaction;
     this.emit('interaction:created', interaction);
 
-    // Start element lookup (async, enriches the interaction when done)
-    if (action.type === 'tap' || action.type === 'longPress') {
+    // Use pre-fetched element (from touch-down) or start async lookup
+    if (prefetchedElement) {
+      interaction.element = prefetchedElement;
+      this.emit('interaction:updated', interaction);
+    } else if (action.type === 'tap' || action.type === 'longPress') {
       this.lookupElement(interaction, action.x, action.y);
     }
 
@@ -259,6 +283,18 @@ export class InteractionCollector extends EventEmitter {
   }
 
   // --- Private: Filters ---
+
+  private isEditablePending(): boolean {
+    if (!this.pending) return false;
+    // Element lookup may not have resolved yet, so also check if keyboard
+    // opened after the pending tap (strong signal it was an editable field)
+    const el = this.pending.element;
+    const elementIsEditable = !!(el?.editable ||
+      el?.className?.includes('EditText') ||
+      el?.className?.includes('TextField'));
+    const keyboardJustOpened = this.keyboardState.open;
+    return elementIsEditable || keyboardJustOpened;
+  }
 
   private isKeyboardTap(action: UserAction): boolean {
     if (!this.keyboardState.open) return false;

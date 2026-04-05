@@ -1,5 +1,5 @@
 import type { UserAction } from '@maestro-recorder/shared';
-import type { GeteventLine, TouchPhase } from './types.js';
+import type { GeteventLine, TouchPhase, TouchStartHint } from './types.js';
 import type { CoordinateConverter } from './coordinate-converter.js';
 
 // Thresholds
@@ -19,6 +19,7 @@ export class TouchStateMachine {
   private startRawY = 0;
   private startXCaptured = false;
   private startYCaptured = false;
+  private startHintEmitted = false;
 
   private maxDistanceFromStart = 0;
   private totalPathLength = 0;
@@ -26,13 +27,19 @@ export class TouchStateMachine {
   private lastRawY = 0;
   private sampleCount = 0;
 
+  /** Callback for touch-start hint — set by DeviceStream to pre-fetch elements */
+  onTouchStart: ((hint: TouchStartHint) => void) | null = null;
+
   feed(line: GeteventLine, converter: CoordinateConverter): UserAction | null {
+    this.converter = converter;
     switch (line.type) {
       case 'EV_ABS': return this.handleAbs(line);
       case 'EV_KEY': return this.handleKey(line, converter);
       default: return null;
     }
   }
+
+  private converter: CoordinateConverter | null = null;
 
   private handleAbs(line: GeteventLine): null {
     if (line.code === 'ABS_MT_POSITION_X') {
@@ -59,6 +66,18 @@ export class TouchStateMachine {
       // Don't track movement until we have the start position
       if (!this.startXCaptured || !this.startYCaptured) {
         return null;
+      }
+
+      // Emit touch-start hint on first frame with both axes (for element pre-fetch)
+      if (!this.startHintEmitted && this.converter) {
+        this.startHintEmitted = true;
+        if (this.onTouchStart) {
+          this.onTouchStart({
+            pixelX: this.converter.toPixelX(this.startRawX),
+            pixelY: this.converter.toPixelY(this.startRawY),
+            timestamp: this.downTimestamp,
+          });
+        }
       }
 
       // Track movement
@@ -91,6 +110,7 @@ export class TouchStateMachine {
       this.downTimestamp = line.timestamp;
       this.startXCaptured = false;
       this.startYCaptured = false;
+      this.startHintEmitted = false;
       this.maxDistanceFromStart = 0;
       this.totalPathLength = 0;
       this.sampleCount = 0;

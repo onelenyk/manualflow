@@ -37,8 +37,10 @@ export class YamlGenerator {
         return `- swipe:\n    start: "${cmd.start}"\n    end: "${cmd.end}"`;
       case 'scroll':
         return '- scroll';
-      case 'scrollUntilVisible':
-        return this.renderSelector('scrollUntilVisible', cmd.selector);
+      case 'scrollUntilVisible': {
+        const dir = 'direction' in cmd && cmd.direction ? `\n    direction: ${cmd.direction.toUpperCase()}` : '';
+        return this.renderScrollUntilVisible(cmd.selector, dir);
+      }
       case 'assertVisible':
         return this.renderSelector('assertVisible', cmd.selector);
       case 'assertNotVisible':
@@ -57,6 +59,19 @@ export class YamlGenerator {
         return '- takeScreenshot';
       default:
         return `# Unknown command: ${(cmd as any).type}`;
+    }
+  }
+
+  private renderScrollUntilVisible(selector: TapOnSelector, directionLine: string): string {
+    switch (selector.kind) {
+      case 'text':
+        return `- scrollUntilVisible:\n    element: "${escape(selector.text)}"${directionLine}`;
+      case 'id':
+        return `- scrollUntilVisible:\n    element:\n      id: "${escape(selector.id)}"${directionLine}`;
+      case 'contentDescription':
+        return `- scrollUntilVisible:\n    element: "${escape(selector.description)}"${directionLine}`;
+      default:
+        return `- scroll${directionLine ? `\n    direction: ${directionLine.trim().split(': ')[1]}` : ''}`;
     }
   }
 
