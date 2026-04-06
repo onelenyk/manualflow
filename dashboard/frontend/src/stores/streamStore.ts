@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useLiveFlowStore } from './liveFlowStore';
 
 interface Interaction {
   id: number;
@@ -230,6 +231,7 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
     try {
       await fetch('/api/stream/clear', { method: 'POST' });
       set({ interactions: [], selectedIds: new Set(), ignoredIds: new Set(), yaml: '' });
+      useLiveFlowStore.getState().clear();
     } catch {}
   },
 

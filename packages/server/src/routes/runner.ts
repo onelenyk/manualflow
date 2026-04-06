@@ -1,0 +1,99 @@
+import { Router } from 'express';
+import type { AppState } from '../index.js';
+import { FlowStorage } from '../storage/flow-storage.js';
+import { TestRunner } from '../runner/test-runner.js';
+
+const storage = new FlowStorage();
+const runner = new TestRunner();
+
+export function runnerRoutes(state: AppState) {
+  const router = Router();
+
+  // Start a test run
+  router.post('/runs', (req, res) => {
+    const { flowId } = req.body;
+    if (!flowId) return res.status(400).json({ error: 'flowId required' });
+
+    const flow = storage.get(flowId);
+    if (!flow) return res.status(404).json({ error: 'Flow not found' });
+
+    const yamlPath = storage.getYamlPath(flowId);
+    if (!yamlPath) return res.status(404).json({ error: 'YAML file not found' });
+
+    const serial = state.activeDevice || undefined;
+    const run = runner.start(flowId, flow.meta.name, yamlPath, serial);
+    res.json(run);
+  });
+
+  // List runs
+  router.get('/runs', (_req, res) => {
+    res.json(runner.listRuns());
+  });
+
+  // Get run status
+  router.get('/runs/:runId', (req, res) => {
+    const run = runner.getStatus(req.params.runId);
+    if (!run) return res.status(404).json({ error: 'Run not found' });
+    res.json(run);
+  });
+
+  // Stop a run
+  router.delete('/runs/:runId', (req, res) => {
+    const ok = runner.stop(req.params.runId);
+    if (!ok) return res.status(404).json({ error: 'Run not found or already finished' });
+    res.json({ ok: true });
+  });
+
+  // SSE stream for live run output
+  router.get('/runs/:runId/stream', (req, res) => {
+    const runId = req.params.runId;
+    const run = runner.getStatus(runId);
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found' });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    // Catch up: send existing lines
+    for (const line of run.lines) {
+      res.write(`data: ${JSON.stringify({ type: 'line', line })}\n\n`);
+    }
+    // Send current steps
+    res.write(`data: ${JSON.stringify({ type: 'steps', steps: run.steps })}\n\n`);
+
+    // If already done, send final status and close
+    if (run.status !== 'running') {
+      res.write(`data: ${JSON.stringify({ type: 'done', run })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Live updates
+    const onLine = (line: string) => {
+      res.write(`data: ${JSON.stringify({ type: 'line', line })}\n\n`);
+    };
+    const onStep = (steps: any[]) => {
+      res.write(`data: ${JSON.stringify({ type: 'steps', steps })}\n\n`);
+    };
+    const onDone = (finalRun: any) => {
+      res.write(`data: ${JSON.stringify({ type: 'done', run: finalRun })}\n\n`);
+      res.end();
+    };
+
+    runner.on(`line:${runId}`, onLine);
+    runner.on(`step:${runId}`, onStep);
+    runner.on(`done:${runId}`, onDone);
+
+    req.on('close', () => {
+      runner.off(`line:${runId}`, onLine);
+      runner.off(`step:${runId}`, onStep);
+      runner.off(`done:${runId}`, onDone);
+    });
+  });
+
+  return router;
+}

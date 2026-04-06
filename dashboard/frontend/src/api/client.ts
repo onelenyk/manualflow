@@ -46,10 +46,12 @@ export const api = {
     fetchJson<any>(`/flows/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name: newName }) }),
 
   // Test Runner
-  runFlow: (id: string) =>
-    fetchJson<any>(`/flows/${id}/run`, { method: 'POST' }),
+  startRun: (flowId: string) =>
+    fetchJson<any>('/runs', { method: 'POST', body: JSON.stringify({ flowId }) }),
+  listRuns: () => fetchJson<any[]>('/runs'),
+  getRun: (runId: string) => fetchJson<any>(`/runs/${runId}`),
   stopRun: (runId: string) =>
-    fetch(`${BASE_URL}/runs/${runId}/stop`, { method: 'POST' }),
+    fetch(`${BASE_URL}/runs/${runId}`, { method: 'DELETE' }),
 
   // YAML
   parseYaml: (yaml: string) =>

@@ -1,19 +1,59 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
-import type { FlowDto } from '../types';
 
-interface FlowStore {
-  flows: FlowDto[];
-  loading: boolean;
-  error: string | null;
-  fetchFlows: () => Promise<void>;
-  deleteFlow: (id: string) => Promise<void>;
+export interface FlowMeta {
+  id: string;
+  name: string;
+  commandCount: number;
+  createdAt: number;
+  updatedAt?: number;
 }
 
-export const useFlowStore = create<FlowStore>((set) => ({
+export interface FlowDetail {
+  id: string;
+  name: string;
+  yaml: string;
+  commandCount: number;
+}
+
+export interface RunState {
+  id: string;
+  flowId: string;
+  flowName: string;
+  status: 'running' | 'passed' | 'failed' | 'stopped';
+  startedAt: number;
+  finishedAt?: number;
+  lines: string[];
+  steps: { command: string; status: string; error?: string }[];
+  exitCode?: number;
+}
+
+interface FlowStore {
+  flows: FlowMeta[];
+  loading: boolean;
+  error: string | null;
+  activeRun: RunState | null;
+  editingFlow: FlowDetail | null;
+
+  fetchFlows: () => Promise<void>;
+  saveFlow: (name: string, yaml: string) => Promise<FlowMeta>;
+  deleteFlow: (id: string) => Promise<void>;
+  duplicateFlow: (id: string, name: string) => Promise<void>;
+  loadFlow: (id: string) => Promise<void>;
+  updateFlow: (id: string, patch: { name?: string; yaml?: string }) => Promise<void>;
+  closeEditor: () => void;
+
+  runFlow: (flowId: string) => Promise<void>;
+  stopRun: () => Promise<void>;
+  clearRun: () => void;
+}
+
+export const useFlowStore = create<FlowStore>((set, get) => ({
   flows: [],
   loading: false,
   error: null,
+  activeRun: null,
+  editingFlow: null,
 
   fetchFlows: async () => {
     set({ loading: true, error: null });
@@ -25,8 +65,76 @@ export const useFlowStore = create<FlowStore>((set) => ({
     }
   },
 
+  saveFlow: async (name: string, yaml: string) => {
+    const meta = await api.saveFlow({ name, yaml });
+    await get().fetchFlows();
+    return meta;
+  },
+
   deleteFlow: async (id: string) => {
     await api.deleteFlow(id);
-    set((s) => ({ flows: s.flows.filter((f) => f.id !== id) }));
+    set(s => ({ flows: s.flows.filter(f => f.id !== id) }));
   },
+
+  duplicateFlow: async (id: string, name: string) => {
+    await api.duplicateFlow(id, name);
+    await get().fetchFlows();
+  },
+
+  loadFlow: async (id: string) => {
+    try {
+      const flow = await api.getFlow(id);
+      set({ editingFlow: flow });
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  updateFlow: async (id: string, patch: { name?: string; yaml?: string }) => {
+    await api.updateFlow(id, patch);
+    await get().fetchFlows();
+    // Refresh editor if open
+    if (get().editingFlow?.id === id) {
+      const flow = await api.getFlow(id);
+      set({ editingFlow: flow });
+    }
+  },
+
+  closeEditor: () => set({ editingFlow: null }),
+
+  runFlow: async (flowId: string) => {
+    try {
+      const run = await api.startRun(flowId);
+      set({ activeRun: run });
+
+      // Connect SSE for live updates
+      const es = new EventSource(`/api/runs/${run.id}/stream`);
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === 'line') {
+            set(s => s.activeRun ? { activeRun: { ...s.activeRun, lines: [...s.activeRun.lines, data.line] } } : {});
+          } else if (data.type === 'steps') {
+            set(s => s.activeRun ? { activeRun: { ...s.activeRun, steps: data.steps } } : {});
+          } else if (data.type === 'done') {
+            set({ activeRun: data.run });
+            es.close();
+          }
+        } catch {}
+      };
+      es.onerror = () => es.close();
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  stopRun: async () => {
+    const run = get().activeRun;
+    if (run) {
+      await api.stopRun(run.id);
+      set(s => s.activeRun ? { activeRun: { ...s.activeRun, status: 'stopped' } } : {});
+    }
+  },
+
+  clearRun: () => set({ activeRun: null }),
 }));

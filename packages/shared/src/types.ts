@@ -204,3 +204,16 @@ export interface RecordedInteraction {
   screenWidth: number;
   screenHeight: number;
 }
+
+// --- Flow Builder ---
+
+export interface FlowEntry {
+  /** Unique entry ID */
+  id: string;
+  /** Linked interaction ID (if auto-generated from an interaction) */
+  interactionId?: number;
+  /** The Maestro command */
+  command: MaestroCommand;
+  /** How this entry was created */
+  source: 'auto' | 'manual';
+}

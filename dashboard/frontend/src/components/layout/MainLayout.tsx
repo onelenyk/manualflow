@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { RecordView } from '../recording/RecordView';
+import { FlowGallery } from '../flows/FlowGallery';
 import { AgentView } from '../agent/AgentView';
 
 export function MainLayout() {
@@ -14,6 +15,7 @@ export function MainLayout() {
         <Sidebar activeView={activeView} onViewChange={setActiveView} />
         <main className="flex-1 overflow-hidden p-4">
           {activeView === 'stream' && <RecordView />}
+          {activeView === 'flows' && <FlowGallery />}
           {activeView === 'agent' && <AgentView />}
         </main>
       </div>

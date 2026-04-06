@@ -1,5 +1,6 @@
 const navItems = [
   { id: 'stream', label: 'Stream', icon: 'S' },
+  { id: 'flows', label: 'Flows', icon: 'F' },
   { id: 'agent', label: 'Agent', icon: 'A' },
 ];
 

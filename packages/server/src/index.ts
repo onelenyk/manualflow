@@ -9,6 +9,8 @@ import { agentRoutes } from './routes/agent.js';
 import { debugRoutes } from './routes/debug.js';
 import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
+import { flowRoutes } from './routes/flows.js';
+import { runnerRoutes } from './routes/runner.js';
 import { DeviceStream } from './streaming/device-stream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +45,8 @@ app.use('/api', agentRoutes(state));
 app.use('/api', debugRoutes(state));
 app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
+app.use('/api', flowRoutes());
+app.use('/api', runnerRoutes(state));
 
 const frontendDist = path.resolve(__dirname, '../../../dashboard/src/main/resources/static');
 app.use(express.static(frontendDist));
