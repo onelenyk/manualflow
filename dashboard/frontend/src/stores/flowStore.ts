@@ -44,6 +44,7 @@ interface FlowStore {
   closeEditor: () => void;
 
   runFlow: (flowId: string) => Promise<void>;
+  runFlowOnDevice: (flowId: string, deviceSerial?: string) => Promise<void>;
   stopRun: () => Promise<void>;
   clearRun: () => void;
 }
@@ -103,8 +104,12 @@ export const useFlowStore = create<FlowStore>((set, get) => ({
   closeEditor: () => set({ editingFlow: null }),
 
   runFlow: async (flowId: string) => {
+    return get().runFlowOnDevice(flowId);
+  },
+
+  runFlowOnDevice: async (flowId: string, deviceSerial?: string) => {
     try {
-      const run = await api.startRun(flowId);
+      const run = await api.startRun(flowId, deviceSerial);
       set({ activeRun: run });
 
       // Connect SSE for live updates

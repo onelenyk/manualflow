@@ -62,6 +62,8 @@ export interface UiElement {
   editable: boolean;
   enabled: boolean;
   focused: boolean;
+  nearestLabel?: string;
+  labelRelation?: 'below' | 'above' | 'leftOf' | 'rightOf';
 }
 
 export interface ElementBounds {
@@ -101,6 +103,7 @@ export type TapOnSelector =
   | { kind: 'id'; id: string }
   | { kind: 'text'; text: string }
   | { kind: 'contentDescription'; description: string }
+  | { kind: 'relative'; relation: 'below' | 'above'; anchor: string }
   | { kind: 'point'; x: number; y: number };
 
 // --- Device Info ---

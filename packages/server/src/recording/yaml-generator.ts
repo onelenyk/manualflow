@@ -83,6 +83,8 @@ export class YamlGenerator {
         return `- ${command}:\n    id: "${escape(selector.id)}"`;
       case 'contentDescription':
         return `- ${command}: "${escape(selector.description)}"`;
+      case 'relative':
+        return `- ${command}:\n    ${selector.relation}: "${escape(selector.anchor)}"`;
       case 'point':
         return `- ${command}:\n    point: "${selector.x},${selector.y}"`;
     }

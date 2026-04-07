@@ -45,9 +45,12 @@ export const api = {
   duplicateFlow: (id: string, newName: string) =>
     fetchJson<any>(`/flows/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name: newName }) }),
 
+  // Maestro
+  getMaestroStatus: () => fetchJson<any>('/maestro/status'),
+
   // Test Runner
-  startRun: (flowId: string) =>
-    fetchJson<any>('/runs', { method: 'POST', body: JSON.stringify({ flowId }) }),
+  startRun: (flowId: string, deviceSerial?: string) =>
+    fetchJson<any>('/runs', { method: 'POST', body: JSON.stringify({ flowId, deviceSerial }) }),
   listRuns: () => fetchJson<any[]>('/runs'),
   getRun: (runId: string) => fetchJson<any>(`/runs/${runId}`),
   stopRun: (runId: string) =>

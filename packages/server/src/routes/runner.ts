@@ -1,17 +1,59 @@
 import { Router } from 'express';
+import { execFile } from 'child_process';
+import path from 'path';
+import os from 'os';
 import type { AppState } from '../index.js';
+import { adbExec } from '../index.js';
 import { FlowStorage } from '../storage/flow-storage.js';
 import { TestRunner } from '../runner/test-runner.js';
 
 const storage = new FlowStorage();
 const runner = new TestRunner();
+const MAESTRO_BIN = path.join(os.homedir(), '.maestro', 'bin', 'maestro');
 
 export function runnerRoutes(state: AppState) {
   const router = Router();
 
+  // Maestro status: installed? version? available devices?
+  router.get('/maestro/status', async (_req, res) => {
+    let installed = false;
+    let version = '';
+    try {
+      const result = await new Promise<string>((resolve, reject) => {
+        execFile(MAESTRO_BIN, ['--version'], { timeout: 5000 }, (err, stdout) => {
+          if (err) reject(err);
+          else resolve(stdout.trim());
+        });
+      });
+      installed = true;
+      version = result;
+    } catch {}
+
+    // Get connected devices via adb
+    let devices: { serial: string; model: string }[] = [];
+    try {
+      const output = await adbExec('devices', '-l');
+      devices = output.split('\n').slice(1)
+        .filter(l => l.includes('device'))
+        .map(l => {
+          const parts = l.trim().split(/\s+/);
+          const model = parts.find(p => p.startsWith('model:'))?.split(':')[1] || 'unknown';
+          return { serial: parts[0], model };
+        });
+    } catch {}
+
+    res.json({
+      installed,
+      version,
+      binPath: MAESTRO_BIN,
+      devices,
+      activeDevice: state.activeDevice,
+    });
+  });
+
   // Start a test run
   router.post('/runs', (req, res) => {
-    const { flowId } = req.body;
+    const { flowId, deviceSerial } = req.body;
     if (!flowId) return res.status(400).json({ error: 'flowId required' });
 
     const flow = storage.get(flowId);
@@ -20,7 +62,7 @@ export function runnerRoutes(state: AppState) {
     const yamlPath = storage.getYamlPath(flowId);
     if (!yamlPath) return res.status(404).json({ error: 'YAML file not found' });
 
-    const serial = state.activeDevice || undefined;
+    const serial = deviceSerial || state.activeDevice || undefined;
     const run = runner.start(flowId, flow.meta.name, yamlPath, serial);
     res.json(run);
   });

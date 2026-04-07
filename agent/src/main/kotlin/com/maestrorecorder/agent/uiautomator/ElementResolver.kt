@@ -24,7 +24,9 @@ data class UiElement(
     val checkable: Boolean = false,
     val checked: Boolean = false,
     val editable: Boolean = false,
-    val scrollable: Boolean = false
+    val scrollable: Boolean = false,
+    val nearestLabel: String? = null,
+    val labelRelation: String? = null, // "below" or "above" — the target is [relation] the label
 )
 
 class ElementResolver(
@@ -71,13 +73,77 @@ class ElementResolver(
             nearbyCandidates.forEach { it.first.recycle() }
         }
 
-        val element = best?.first?.toUiElement() ?: UiElement()
+        var element = best?.first?.toUiElement() ?: UiElement()
         Log.d(TAG, "At ($x,$y): ${candidates.size} candidates, best=${element.text ?: element.resourceId ?: element.className} score=${best?.second}")
+
+        // 4. If element has no identifiers, find nearest labeled neighbor
+        if (element.text.isNullOrEmpty() && element.resourceId.isNullOrEmpty() && element.contentDescription.isNullOrEmpty()) {
+            val neighbor = findNearestLabel(rootNode, element.bounds)
+            if (neighbor != null) {
+                element = element.copy(nearestLabel = neighbor.first, labelRelation = neighbor.second)
+                Log.d(TAG, "  neighbor: \"${neighbor.first}\" (${neighbor.second})")
+            }
+        }
 
         candidates.forEach { it.first.recycle() }
         rootNode.recycle()
         onTreeAccess?.invoke()
         return element
+    }
+
+    /** Find the nearest node with text relative to the given bounds */
+    private fun findNearestLabel(root: AccessibilityNodeInfo, targetBounds: Bounds?): Pair<String, String>? {
+        if (targetBounds == null) return null
+
+        val labeled = mutableListOf<Triple<String, Rect, Int>>() // text, bounds, area
+        collectLabeledNodes(root, labeled)
+
+        val targetCenterY = (targetBounds.top + targetBounds.bottom) / 2
+        val targetCenterX = (targetBounds.left + targetBounds.right) / 2
+
+        var bestLabel: String? = null
+        var bestRelation: String? = null
+        var bestDistance = Int.MAX_VALUE
+
+        for ((text, bounds, _) in labeled) {
+            val centerY = (bounds.top + bounds.bottom) / 2
+            val centerX = (bounds.left + bounds.right) / 2
+
+            // Check if this label is above the target
+            if (bounds.bottom <= targetBounds.top + 20) {
+                val dist = targetBounds.top - bounds.bottom + Math.abs(targetCenterX - centerX) / 3
+                if (dist < bestDistance) {
+                    bestDistance = dist
+                    bestLabel = text
+                    bestRelation = "below" // target is below this label
+                }
+            }
+            // Check if this label is below the target
+            else if (bounds.top >= targetBounds.bottom - 20) {
+                val dist = bounds.top - targetBounds.bottom + Math.abs(targetCenterX - centerX) / 3
+                if (dist < bestDistance) {
+                    bestDistance = dist
+                    bestLabel = text
+                    bestRelation = "above" // target is above this label
+                }
+            }
+        }
+
+        return if (bestLabel != null && bestRelation != null) Pair(bestLabel, bestRelation) else null
+    }
+
+    private fun collectLabeledNodes(node: AccessibilityNodeInfo, results: MutableList<Triple<String, Rect, Int>>) {
+        val text = node.text?.toString()
+        if (!text.isNullOrEmpty() && text.length < 80) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            results.add(Triple(text, bounds, bounds.width() * bounds.height()))
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectLabeledNodes(child, results)
+            child.recycle()
+        }
     }
 
     /**

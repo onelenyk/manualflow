@@ -198,6 +198,7 @@ function selectorYaml(name: string, cmd: any): string {
     case 'text': return `- ${name}: "${esc(sel.text)}"`;
     case 'id': return `- ${name}:\n    id: "${esc(sel.id)}"`;
     case 'contentDescription': return `- ${name}: "${esc(sel.description)}"`;
+    case 'relative': return `- ${name}:\n    ${sel.relation}: "${esc(sel.anchor)}"`;
     case 'point': return `- ${name}:\n    point: "${sel.x},${sel.y}"`;
     default: return `- ${name}`;
   }

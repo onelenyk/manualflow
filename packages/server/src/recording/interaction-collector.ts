@@ -243,6 +243,7 @@ export class InteractionCollector extends EventEmitter {
     const element = await this.agent.elementAt(x, y);
     if (element && interaction.status === 'pending') {
       interaction.element = element;
+      console.log(`[InteractionCollector] element at (${x},${y}): text="${element.text}" id="${element.resourceId}" nearestLabel="${(element as any).nearestLabel || 'NONE'}"`);
       this.emit('interaction:updated', interaction);
     }
   }

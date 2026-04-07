@@ -41,6 +41,10 @@ interface StreamStore {
   ignoreAllWithContent: (content: string) => void;
   clearIgnored: () => void;
 
+  // Remove
+  removeSelected: () => void;
+  removeInteraction: (id: number) => void;
+
   // Actions
   exportYaml: (appId: string) => Promise<void>;
   clearInteractions: () => Promise<void>;
@@ -203,6 +207,21 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
 
   clearIgnored: () => {
     set({ ignoredIds: new Set() });
+  },
+
+  removeInteraction: (id: number) => {
+    set(s => ({
+      interactions: s.interactions.filter(i => i.id !== id),
+      selectedIds: (() => { const n = new Set(s.selectedIds); n.delete(id); return n; })(),
+      ignoredIds: (() => { const n = new Set(s.ignoredIds); n.delete(id); return n; })(),
+    }));
+  },
+
+  removeSelected: () => {
+    set(s => ({
+      interactions: s.interactions.filter(i => !s.selectedIds.has(i.id)),
+      selectedIds: new Set(),
+    }));
   },
 
   exportYaml: async (appId: string) => {

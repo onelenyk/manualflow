@@ -73,6 +73,11 @@ class HttpServer(
             .put("editable", element.editable)
             .put("scrollable", element.scrollable)
 
+        if (element.nearestLabel != null) {
+            json.put("nearestLabel", element.nearestLabel)
+            json.put("labelRelation", element.labelRelation)
+        }
+
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 

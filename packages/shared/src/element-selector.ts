@@ -25,6 +25,11 @@ export function selectBestSelector(element: UiElement | null, x: number, y: numb
     return { kind: 'text', text: element.text };
   }
 
-  // Priority 4: coordinate fallback
+  // Priority 4: relative selector (nearest labeled neighbor)
+  if (element.nearestLabel && element.labelRelation) {
+    return { kind: 'relative', relation: element.labelRelation as 'below' | 'above', anchor: element.nearestLabel };
+  }
+
+  // Priority 5: coordinate fallback
   return { kind: 'point', x, y };
 }
