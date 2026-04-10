@@ -6,6 +6,7 @@ import type { AppState } from '../index.js';
 import { adbExec } from '../index.js';
 import { FlowStorage } from '../storage/flow-storage.js';
 import { TestRunner } from '../runner/test-runner.js';
+import { stopAgent, startAgent } from '../agent/agent-lifecycle.js';
 
 const storage = new FlowStorage();
 const runner = new TestRunner();
@@ -52,7 +53,10 @@ export function runnerRoutes(state: AppState) {
   });
 
   // Start a test run
-  router.post('/runs', (req, res) => {
+  // Important: ManualFlow's agent instrumentation owns Android's UiAutomation
+  // singleton, which Maestro also needs. We stop our agent before the run
+  // and restart it once Maestro exits so both tools can coexist.
+  router.post('/runs', async (req, res) => {
     const { flowId, deviceSerial } = req.body;
     if (!flowId) return res.status(400).json({ error: 'flowId required' });
 
@@ -63,7 +67,21 @@ export function runnerRoutes(state: AppState) {
     if (!yamlPath) return res.status(404).json({ error: 'YAML file not found' });
 
     const serial = deviceSerial || state.activeDevice || undefined;
+
+    // Release UiAutomation so Maestro can acquire it
+    if (serial) {
+      try { await stopAgent(state, serial); } catch {}
+    }
+
     const run = runner.start(flowId, flow.meta.name, yamlPath, serial);
+
+    // Auto-restart our agent when the Maestro run finishes
+    if (serial) {
+      runner.once(`done:${run.id}`, () => {
+        startAgent(state, serial).catch(() => {});
+      });
+    }
+
     res.json(run);
   });
 
