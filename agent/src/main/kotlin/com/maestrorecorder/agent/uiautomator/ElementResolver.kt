@@ -184,31 +184,44 @@ class ElementResolver(
         return JUNK_IDS.contains(shortId)
     }
 
+    private fun area(node: AccessibilityNodeInfo): Long {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        return bounds.width().toLong() * bounds.height().toLong()
+    }
+
     private fun pickBestCandidate(candidates: List<Pair<AccessibilityNodeInfo, Int>>): Pair<AccessibilityNodeInfo, Int>? {
         if (candidates.isEmpty()) return null
 
-        // Split: nodes with meaningful content vs generic containers
-        // Exclude nodes with junk IDs (full-screen root containers)
-        val meaningful = candidates.filter { (node, _) ->
-            if (isJunkId(node)) return@filter false
-            !node.text.isNullOrEmpty() ||
-            (!node.viewIdResourceName.isNullOrEmpty()) ||
-            !node.contentDescription.isNullOrEmpty() ||
-            node.isEditable ||
-            node.isClickable
-        }
-
-        if (meaningful.isNotEmpty()) {
-            // Among meaningful nodes, pick the smallest by bounding box area
-            return meaningful.minByOrNull { (node, _) ->
-                val bounds = Rect()
-                node.getBoundsInScreen(bounds)
-                bounds.width().toLong() * bounds.height().toLong()
-            }
-        }
-
-        // No meaningful nodes — fall back to highest score, still excluding junk
         val nonJunk = candidates.filter { (node, _) -> !isJunkId(node) }
+
+        // Tier 1: clickable/editable elements that also have a usable id or desc
+        //   These are the semantic test targets (buttons, inputs) that Compose
+        //   may wrap with non-clickable text children whose bounds are slightly
+        //   smaller — prefer the actionable parent, smallest wins.
+        val actionableWithId = nonJunk.filter { (node, _) ->
+            (node.isClickable || node.isEditable) &&
+                (!node.viewIdResourceName.isNullOrEmpty() ||
+                    !node.contentDescription.isNullOrEmpty())
+        }
+        if (actionableWithId.isNotEmpty()) {
+            return actionableWithId.minByOrNull { (node, _) -> area(node) }
+        }
+
+        // Tier 2: any meaningful node (text, id, desc, editable, or clickable)
+        //   Smallest wins → most specific leaf.
+        val meaningful = nonJunk.filter { (node, _) ->
+            !node.text.isNullOrEmpty() ||
+                !node.viewIdResourceName.isNullOrEmpty() ||
+                !node.contentDescription.isNullOrEmpty() ||
+                node.isEditable ||
+                node.isClickable
+        }
+        if (meaningful.isNotEmpty()) {
+            return meaningful.minByOrNull { (node, _) -> area(node) }
+        }
+
+        // Tier 3: no meaningful candidates — fall back to highest score.
         return nonJunk.maxByOrNull { it.second } ?: candidates.maxByOrNull { it.second }
     }
 

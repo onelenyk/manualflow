@@ -83,6 +83,32 @@ frontend-dev: ## Start frontend dev server (with HMR)
 	cd dashboard/frontend && npx vite --port 5173
 
 # ──────────────────────────────────────────────
+# Test App (Android Compose sample)
+# ──────────────────────────────────────────────
+
+TESTAPP_APK := testapp/build/outputs/apk/debug/testapp-debug.apk
+TESTAPP_PKG := com.maestrorecorder.testapp
+
+.PHONY: build-testapp
+build-testapp: ## Build testapp debug APK
+	./gradlew :testapp:assembleDebug
+	@echo "✅ Testapp APK built: $(TESTAPP_APK)"
+
+.PHONY: install-testapp
+install-testapp: _check-device ## Install testapp on device
+	@test -f $(TESTAPP_APK) || (echo "❌ APK not found. Run 'make build-testapp' first" && exit 1)
+	adb -s $(SERIAL) install -r $(TESTAPP_APK)
+	@echo "✅ Testapp installed on $(SERIAL)"
+
+.PHONY: launch-testapp
+launch-testapp: _check-device ## Launch testapp on device
+	adb -s $(SERIAL) shell am start -n $(TESTAPP_PKG)/.MainActivity
+	@echo "✅ Testapp launched"
+
+.PHONY: deploy-testapp
+deploy-testapp: build-testapp install-testapp launch-testapp ## Build + install + launch testapp
+
+# ──────────────────────────────────────────────
 # Agent (Android)
 # ──────────────────────────────────────────────
 

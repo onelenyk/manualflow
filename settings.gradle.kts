@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "maestro-recorder"
 
 include(":agent")
+include(":testapp")
