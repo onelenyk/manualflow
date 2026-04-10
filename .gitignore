@@ -20,6 +20,13 @@ dashboard/src/main/resources/static/index.html
 # OMC working directory
 .omc/
 
+# Secrets and signing
+.env
+.env.*
+*.keystore
+*.apk
+local.properties
+
 # OS
 .DS_Store
 Thumbs.db

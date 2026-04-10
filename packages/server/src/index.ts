@@ -54,8 +54,12 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`MaestroRecorder dashboard: http://localhost:${PORT}`);
+// Bind to loopback by default so the dashboard is only reachable from
+// localhost. The trust model assumes a single-user dev machine; set
+// HOST=0.0.0.0 explicitly if you know you want LAN exposure.
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`MaestroRecorder dashboard: http://${HOST}:${PORT}`);
 });
 
 process.on('SIGINT', () => {
