@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useFlowStore } from '../../stores/flowStore';
 
 export function RunViewer() {
-  const { activeRun, stopRun, clearRun } = useFlowStore();
+  const { activeRun, stopRun, pauseRun, resumeRun, restartRun, clearRun } = useFlowStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -12,12 +12,17 @@ export function RunViewer() {
   if (!activeRun) return null;
 
   const isRunning = activeRun.status === 'running';
+  const isPaused = activeRun.status === 'paused';
+  const isActive = isRunning || isPaused;
+  const isFinished = !isActive;
+
   const duration = activeRun.finishedAt
     ? ((activeRun.finishedAt - activeRun.startedAt) / 1000).toFixed(1)
     : ((Date.now() - activeRun.startedAt) / 1000).toFixed(0);
 
   const statusColor = {
     running: 'text-blue-400',
+    paused: 'text-amber-400',
     passed: 'text-green-400',
     failed: 'text-red-400',
     stopped: 'text-yellow-400',
@@ -25,6 +30,7 @@ export function RunViewer() {
 
   const statusIcon = {
     running: '\u25CF',
+    paused: '\u23F8',
     passed: '\u2713',
     failed: '\u2717',
     stopped: '\u25A0',
@@ -45,13 +51,37 @@ export function RunViewer() {
             </span>
             <span className="text-xs text-slate-500">{duration}s</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-testid="run-controls">
             {isRunning && (
+              <button
+                onClick={pauseRun}
+                className="px-3 py-1.5 text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors"
+              >
+                Pause
+              </button>
+            )}
+            {isPaused && (
+              <button
+                onClick={resumeRun}
+                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+              >
+                Resume
+              </button>
+            )}
+            {isActive && (
               <button
                 onClick={stopRun}
                 className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
               >
                 Stop
+              </button>
+            )}
+            {isFinished && (
+              <button
+                onClick={() => restartRun()}
+                className="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
+              >
+                Run again
               </button>
             )}
           </div>

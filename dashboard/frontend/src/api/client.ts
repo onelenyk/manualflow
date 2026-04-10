@@ -55,6 +55,10 @@ export const api = {
   getRun: (runId: string) => fetchJson<any>(`/runs/${runId}`),
   stopRun: (runId: string) =>
     fetch(`${BASE_URL}/runs/${runId}`, { method: 'DELETE' }),
+  pauseRun: (runId: string) =>
+    fetchJson<any>(`/runs/${runId}/pause`, { method: 'POST' }),
+  resumeRun: (runId: string) =>
+    fetchJson<any>(`/runs/${runId}/resume`, { method: 'POST' }),
 
   // YAML
   parseYaml: (yaml: string) =>

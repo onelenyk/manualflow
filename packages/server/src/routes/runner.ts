@@ -86,6 +86,20 @@ export function runnerRoutes(state: AppState) {
     res.json({ ok: true });
   });
 
+  // Pause a run (POSIX SIGSTOP)
+  router.post('/runs/:runId/pause', (req, res) => {
+    const ok = runner.pause(req.params.runId);
+    if (!ok) return res.status(409).json({ error: 'Run cannot be paused (not running or already paused)' });
+    res.json(runner.getStatus(req.params.runId));
+  });
+
+  // Resume a paused run (POSIX SIGCONT)
+  router.post('/runs/:runId/resume', (req, res) => {
+    const ok = runner.resume(req.params.runId);
+    if (!ok) return res.status(409).json({ error: 'Run is not paused' });
+    res.json(runner.getStatus(req.params.runId));
+  });
+
   // SSE stream for live run output
   router.get('/runs/:runId/stream', (req, res) => {
     const runId = req.params.runId;
@@ -107,8 +121,8 @@ export function runnerRoutes(state: AppState) {
     // Send current steps
     res.write(`data: ${JSON.stringify({ type: 'steps', steps: run.steps })}\n\n`);
 
-    // If already done, send final status and close
-    if (run.status !== 'running') {
+    // If already done (not running or paused), send final status and close
+    if (run.status !== 'running' && run.status !== 'paused') {
       res.write(`data: ${JSON.stringify({ type: 'done', run })}\n\n`);
       res.end();
       return;

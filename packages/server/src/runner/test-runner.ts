@@ -10,13 +10,17 @@ export interface StepResult {
   error?: string;
 }
 
+export type RunStatus = 'running' | 'paused' | 'passed' | 'failed' | 'stopped';
+
 export interface RunState {
   id: string;
   flowId: string;
   flowName: string;
-  status: 'running' | 'passed' | 'failed' | 'stopped';
+  status: RunStatus;
   startedAt: number;
   finishedAt?: number;
+  pausedAt?: number;
+  pausedElapsedMs?: number;
   lines: string[];
   steps: StepResult[];
   exitCode?: number;
@@ -107,13 +111,59 @@ export class TestRunner extends EventEmitter {
     const proc = this.processes.get(runId);
     if (!proc) return false;
 
-    proc.kill();
+    // If paused, we must SIGCONT before SIGTERM — otherwise the process
+    // can't receive the terminate signal.
     const state = this.runs.get(runId);
+    if (state?.status === 'paused') {
+      try { proc.kill('SIGCONT'); } catch {}
+    }
+    proc.kill();
     if (state) {
       state.status = 'stopped';
       state.finishedAt = Date.now();
     }
     this.processes.delete(runId);
+    this.emit(`step:${runId}`, state?.steps ?? []);
+    return true;
+  }
+
+  /**
+   * Pause a running test via SIGSTOP. POSIX only — Windows has no equivalent.
+   * The subprocess freezes in-place; resume continues from the exact state.
+   */
+  pause(runId: string): boolean {
+    const proc = this.processes.get(runId);
+    const state = this.runs.get(runId);
+    if (!proc || !state || state.status !== 'running') return false;
+
+    try {
+      proc.kill('SIGSTOP');
+    } catch {
+      return false;
+    }
+    state.status = 'paused';
+    state.pausedAt = Date.now();
+    this.emit(`step:${runId}`, state.steps);
+    return true;
+  }
+
+  /** Resume a paused test via SIGCONT. */
+  resume(runId: string): boolean {
+    const proc = this.processes.get(runId);
+    const state = this.runs.get(runId);
+    if (!proc || !state || state.status !== 'paused') return false;
+
+    try {
+      proc.kill('SIGCONT');
+    } catch {
+      return false;
+    }
+    if (state.pausedAt) {
+      state.pausedElapsedMs = (state.pausedElapsedMs ?? 0) + (Date.now() - state.pausedAt);
+      state.pausedAt = undefined;
+    }
+    state.status = 'running';
+    this.emit(`step:${runId}`, state.steps);
     return true;
   }
 
@@ -186,7 +236,7 @@ export class TestRunner extends EventEmitter {
       if (last) last.status = 'passed';
       this.emit(`step:${state.id}`, state.steps);
     }
-    const emojiStepMatch = cleanLine.match(/^[⚙️🔧]\s*(.+)/u);
+    const emojiStepMatch = cleanLine.match(/^(?:\u2699|\u{1F527})\ufe0f?\s*(.+)/u);
     if (emojiStepMatch) {
       const prev = state.steps[state.steps.length - 1];
       if (prev?.status === 'running') prev.status = 'passed';

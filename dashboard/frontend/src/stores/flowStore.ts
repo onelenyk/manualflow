@@ -16,13 +16,17 @@ export interface FlowDetail {
   commandCount: number;
 }
 
+export type RunStatus = 'running' | 'paused' | 'passed' | 'failed' | 'stopped';
+
 export interface RunState {
   id: string;
   flowId: string;
   flowName: string;
-  status: 'running' | 'passed' | 'failed' | 'stopped';
+  status: RunStatus;
   startedAt: number;
   finishedAt?: number;
+  pausedAt?: number;
+  pausedElapsedMs?: number;
   lines: string[];
   steps: { command: string; status: string; error?: string }[];
   exitCode?: number;
@@ -46,6 +50,9 @@ interface FlowStore {
   runFlow: (flowId: string) => Promise<void>;
   runFlowOnDevice: (flowId: string, deviceSerial?: string) => Promise<void>;
   stopRun: () => Promise<void>;
+  pauseRun: () => Promise<void>;
+  resumeRun: () => Promise<void>;
+  restartRun: (deviceSerial?: string) => Promise<void>;
   clearRun: () => void;
 }
 
@@ -139,6 +146,36 @@ export const useFlowStore = create<FlowStore>((set, get) => ({
       await api.stopRun(run.id);
       set(s => s.activeRun ? { activeRun: { ...s.activeRun, status: 'stopped' } } : {});
     }
+  },
+
+  pauseRun: async () => {
+    const run = get().activeRun;
+    if (!run || run.status !== 'running') return;
+    try {
+      const updated = await api.pauseRun(run.id);
+      set(s => s.activeRun ? { activeRun: { ...s.activeRun, ...updated } } : {});
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  resumeRun: async () => {
+    const run = get().activeRun;
+    if (!run || run.status !== 'paused') return;
+    try {
+      const updated = await api.resumeRun(run.id);
+      set(s => s.activeRun ? { activeRun: { ...s.activeRun, ...updated } } : {});
+    } catch (e: any) {
+      set({ error: e.message });
+    }
+  },
+
+  restartRun: async (deviceSerial?: string) => {
+    const run = get().activeRun;
+    if (!run) return;
+    const flowId = run.flowId;
+    set({ activeRun: null });
+    await get().runFlowOnDevice(flowId, deviceSerial);
   },
 
   clearRun: () => set({ activeRun: null }),
