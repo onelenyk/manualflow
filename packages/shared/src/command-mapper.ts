@@ -41,7 +41,9 @@ export function getMappingAlternatives(interaction: RecordedInteraction): { labe
   const action = interaction.touchAction;
   const el = interaction.element;
   const isEditable = el?.editable || el?.className?.includes('EditText') || el?.className?.includes('TextField');
-  const selector = selectBestSelector(el ?? null, action?.x ?? action?.startX ?? 0, action?.y ?? action?.startY ?? 0);
+  const actionX = action ? ('x' in action ? action.x : action.startX) : 0;
+  const actionY = action ? ('y' in action ? action.y : action.startY) : 0;
+  const selector = selectBestSelector(el ?? null, actionX, actionY, interaction.screenWidth, interaction.screenHeight);
 
   const alternatives: { label: string; commands: MaestroCommand[] }[] = [];
 
@@ -141,14 +143,14 @@ function mapTouchInteraction(interaction: RecordedInteraction): MaestroCommand[]
 function mapTap(interaction: RecordedInteraction): MaestroCommand[] {
   const action = interaction.touchAction!;
   if (action.type !== 'tap') return [];
-  const selector = selectBestSelector(interaction.element ?? null, action.x, action.y);
+  const selector = selectBestSelector(interaction.element ?? null, action.x, action.y, interaction.screenWidth, interaction.screenHeight);
   return [{ type: 'tapOn', selector }];
 }
 
 function mapLongPress(interaction: RecordedInteraction): MaestroCommand[] {
   const action = interaction.touchAction!;
   if (action.type !== 'longPress') return [];
-  const selector = selectBestSelector(interaction.element ?? null, action.x, action.y);
+  const selector = selectBestSelector(interaction.element ?? null, action.x, action.y, interaction.screenWidth, interaction.screenHeight);
   return [{ type: 'longPressOn', selector }];
 }
 
@@ -257,8 +259,8 @@ function buildWindowAssert(event: AccessibilityEventData): MaestroCommand | null
   return { type: 'assertVisible', selector: { kind: 'text', text: screenName } };
 }
 
-function buildAccessibilitySelector(event: AccessibilityEventData, element?: UiElement): TapOnSelector {
-  if (element) return selectBestSelector(element, 0, 0);
+function buildAccessibilitySelector(event: AccessibilityEventData, element?: UiElement, screenWidth?: number, screenHeight?: number): TapOnSelector {
+  if (element) return selectBestSelector(element, 0, 0, screenWidth, screenHeight);
   if (event.resourceId) {
     const id = event.resourceId.includes(':id/') ? event.resourceId.split(':id/')[1] : event.resourceId;
     return { kind: 'id', id };

@@ -86,7 +86,7 @@ export class YamlGenerator {
       case 'relative':
         return `- ${command}:\n    ${selector.relation}: "${escape(selector.anchor)}"`;
       case 'point':
-        return `- ${command}:\n    point: "${selector.x},${selector.y}"`;
+        return `- ${command}:\n    point: "${selector.x}%,${selector.y}%"`;
     }
   }
 

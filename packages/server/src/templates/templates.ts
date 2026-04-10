@@ -1,4 +1,4 @@
-import type { Template } from '../../shared/src/types.js';
+import type { Template } from '@maestro-recorder/shared';
 
 export const MAESTRO_TEMPLATES: Template[] = [
   {

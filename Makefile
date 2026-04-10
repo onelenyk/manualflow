@@ -13,6 +13,21 @@ SERIAL      := $(shell adb devices -l 2>/dev/null | grep 'device ' | head -1 | a
 # Full stack
 # ──────────────────────────────────────────────
 
+.PHONY: build
+build: typecheck build-frontend ## Type-check all packages + build frontend
+	@echo "✅ Build complete"
+
+.PHONY: typecheck
+typecheck: ## Type-check TypeScript packages
+	npx tsc -p packages/shared/tsconfig.json --noEmit
+	npx tsc -p packages/server/tsconfig.json --noEmit
+	@echo "✅ Type-check passed"
+
+.PHONY: test
+test: ## Run all tests
+	npx vitest run
+	@echo "✅ Tests passed"
+
 .PHONY: setup
 setup: deps build-frontend build-agent ## First-time setup: install deps, build everything
 	@echo "✅ Setup complete. Run 'make start' to launch."

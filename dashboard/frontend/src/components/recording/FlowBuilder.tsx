@@ -309,7 +309,7 @@ function CommandEditor({ command, onSave, onCancel }: {
     sel?.kind === 'id' ? sel.id :
     sel?.kind === 'contentDescription' ? sel.description :
     sel?.kind === 'relative' ? sel.anchor :
-    sel?.kind === 'point' ? `${sel.x},${sel.y}` : ''
+    sel?.kind === 'point' ? `${sel.x}%,${sel.y}%` : ''
   );
   const [selectorRelation, setSelectorRelation] = useState(sel?.kind === 'relative' ? sel.relation : 'below');
 
@@ -334,7 +334,7 @@ function CommandEditor({ command, onSave, onCancel }: {
       case 'contentDescription': return { kind: 'contentDescription' as const, description: selectorValue };
       case 'relative': return { kind: 'relative' as const, relation: selectorRelation as 'below' | 'above', anchor: selectorValue };
       case 'point': {
-        const [x, y] = selectorValue.split(',').map(Number);
+        const [x, y] = selectorValue.replace(/%/g, '').split(',').map(Number);
         return { kind: 'point' as const, x: x || 0, y: y || 0 };
       }
       default: return { kind: 'text' as const, text: selectorValue };
@@ -384,7 +384,7 @@ function CommandEditor({ command, onSave, onCancel }: {
             type="text"
             value={selectorValue}
             onChange={e => setSelectorValue(e.target.value)}
-            placeholder={selectorKind === 'point' ? 'x,y' : selectorKind === 'relative' ? 'anchor text' : 'value'}
+            placeholder={selectorKind === 'point' ? 'x%,y%' : selectorKind === 'relative' ? 'anchor text' : 'value'}
             className="flex-1 px-2 py-1 text-[11px] bg-slate-700 text-white rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             autoFocus
           />
@@ -473,7 +473,7 @@ function formatCommandShort(cmd: MaestroCommand): string {
     : sel.kind === 'id' ? `id: "${sel.id}"`
     : sel.kind === 'contentDescription' ? `"${sel.description}"`
     : sel.kind === 'relative' ? `${sel.relation}: "${sel.anchor}"`
-    : `(${sel.x},${sel.y})`
+    : `(${sel.x}%,${sel.y}%)`
     : '';
 
   switch (cmd.type) {

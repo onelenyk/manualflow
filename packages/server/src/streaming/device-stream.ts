@@ -45,6 +45,8 @@ export class DeviceStream extends EventEmitter {
   private _connected = false;
   private prefetchedElement: UiElement | null = null;
   private prefetchCoords: { x: number; y: number } | null = null;
+  private screenWidth = 1080;
+  private screenHeight = 2400;
 
   get connected(): boolean { return this._connected; }
   get interactions(): RecordedInteraction[] { return this._interactions; }
@@ -90,6 +92,8 @@ export class DeviceStream extends EventEmitter {
       inputDevice.maxX, inputDevice.maxY,
       deviceInfo.screenWidth, deviceInfo.screenHeight,
     );
+    this.screenWidth = deviceInfo.screenWidth;
+    this.screenHeight = deviceInfo.screenHeight;
 
     // 6. InteractionCollector
     this.collector = new InteractionCollector(this.agent, deviceInfo.screenWidth, deviceInfo.screenHeight);
@@ -214,7 +218,7 @@ export class DeviceStream extends EventEmitter {
 
   // --- Private ---
 
-  /** Use pre-fetched element if action coordinates are close to prefetch coordinates */
+  /** Use pre-fetched element if action coordinates are close and element is meaningful */
   private consumePrefetch(action: UserAction): UiElement | null {
     if (!this.prefetchedElement || !this.prefetchCoords) return null;
 
@@ -224,12 +228,19 @@ export class DeviceStream extends EventEmitter {
     } else if (action.type === 'swipe' || action.type === 'scroll') {
       ax = action.startX; ay = action.startY;
     } else {
+      this.prefetchedElement = null;
+      this.prefetchCoords = null;
       return null;
     }
 
     const dx = Math.abs(ax - this.prefetchCoords.x);
     const dy = Math.abs(ay - this.prefetchCoords.y);
-    const element = (dx < 30 && dy < 30) ? this.prefetchedElement : null;
+    let element = (dx < 30 && dy < 30) ? this.prefetchedElement : null;
+
+    // Discard if it's a full-screen generic container (race condition — tree wasn't ready)
+    if (element && isJunkElement(element, this.screenWidth, this.screenHeight)) {
+      element = null;
+    }
 
     // Always consume — one use only
     this.prefetchedElement = null;
@@ -317,4 +328,33 @@ export class DeviceStream extends EventEmitter {
       });
     });
   }
+}
+
+const JUNK_IDS = new Set([
+  'action_bar_root',
+  'content',
+  'decor_content_parent',
+  'statusBarBackground',
+  'navigationBarBackground',
+]);
+
+/**
+ * An element is "junk" only when it has no usable identifiers AND
+ * covers most of the screen (i.e. a bare root container).
+ * Exported for unit testing.
+ */
+export function isJunkElement(el: UiElement, screenWidth: number, screenHeight: number): boolean {
+  const shortId = el.resourceId?.includes(':id/')
+    ? el.resourceId.split(':id/')[1]
+    : el.resourceId;
+  const hasRealId = !!(shortId && !JUNK_IDS.has(shortId));
+
+  if (el.text || el.contentDescription || el.nearestLabel || hasRealId) return false;
+
+  const b = el.bounds;
+  if (!b) return true;
+  const w = Math.max(1, screenWidth);
+  const h = Math.max(1, screenHeight);
+  const area = (b.right - b.left) * (b.bottom - b.top);
+  return area > w * h * 0.8;
 }

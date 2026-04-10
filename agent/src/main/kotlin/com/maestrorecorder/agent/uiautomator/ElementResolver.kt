@@ -76,12 +76,21 @@ class ElementResolver(
         var element = best?.first?.toUiElement() ?: UiElement()
         Log.d(TAG, "At ($x,$y): ${candidates.size} candidates, best=${element.text ?: element.resourceId ?: element.className} score=${best?.second}")
 
-        // 4. If element has no identifiers, find nearest labeled neighbor
+        // 4. If element has no identifiers, enrich with context
         if (element.text.isNullOrEmpty() && element.resourceId.isNullOrEmpty() && element.contentDescription.isNullOrEmpty()) {
-            val neighbor = findNearestLabel(rootNode, element.bounds)
-            if (neighbor != null) {
-                element = element.copy(nearestLabel = neighbor.first, labelRelation = neighbor.second)
-                Log.d(TAG, "  neighbor: \"${neighbor.first}\" (${neighbor.second})")
+            // First: try to find a labeled child inside this element (e.g., text inside a card)
+            val childLabel = best?.first?.let { findFirstChildText(it) }
+            if (childLabel != null) {
+                // Use "containsChild" style — the element contains this text
+                element = element.copy(nearestLabel = childLabel, labelRelation = "containsChild")
+                Log.d(TAG, "  child text: \"$childLabel\"")
+            } else {
+                // Fallback: find nearest labeled neighbor above/below
+                val neighbor = findNearestLabel(rootNode, element.bounds)
+                if (neighbor != null) {
+                    element = element.copy(nearestLabel = neighbor.first, labelRelation = neighbor.second)
+                    Log.d(TAG, "  neighbor: \"${neighbor.first}\" (${neighbor.second})")
+                }
             }
         }
 
@@ -89,6 +98,23 @@ class ElementResolver(
         rootNode.recycle()
         onTreeAccess?.invoke()
         return element
+    }
+
+    /** Find the first child with meaningful text (for cards/containers with text children) */
+    private fun findFirstChildText(node: AccessibilityNodeInfo): String? {
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val text = child.text?.toString()
+            if (!text.isNullOrEmpty() && text.length < 80) {
+                child.recycle()
+                return text
+            }
+            // Recurse one more level
+            val grandchildText = findFirstChildText(child)
+            child.recycle()
+            if (grandchildText != null) return grandchildText
+        }
+        return null
     }
 
     /** Find the nearest node with text relative to the given bounds */
@@ -150,13 +176,23 @@ class ElementResolver(
      * Among candidates with meaningful content (text, resourceId, contentDescription),
      * prefer the smallest node (most specific). Among others, prefer highest score.
      */
+    private val JUNK_IDS = setOf("action_bar_root", "content", "decor_content_parent", "statusBarBackground", "navigationBarBackground")
+
+    private fun isJunkId(node: AccessibilityNodeInfo): Boolean {
+        val rid = node.viewIdResourceName ?: return false
+        val shortId = if (rid.contains(":id/")) rid.substringAfter(":id/") else rid
+        return JUNK_IDS.contains(shortId)
+    }
+
     private fun pickBestCandidate(candidates: List<Pair<AccessibilityNodeInfo, Int>>): Pair<AccessibilityNodeInfo, Int>? {
         if (candidates.isEmpty()) return null
 
         // Split: nodes with meaningful content vs generic containers
+        // Exclude nodes with junk IDs (full-screen root containers)
         val meaningful = candidates.filter { (node, _) ->
+            if (isJunkId(node)) return@filter false
             !node.text.isNullOrEmpty() ||
-            !node.viewIdResourceName.isNullOrEmpty() ||
+            (!node.viewIdResourceName.isNullOrEmpty()) ||
             !node.contentDescription.isNullOrEmpty() ||
             node.isEditable ||
             node.isClickable
@@ -171,8 +207,9 @@ class ElementResolver(
             }
         }
 
-        // No meaningful nodes — fall back to highest score
-        return candidates.maxByOrNull { it.second }
+        // No meaningful nodes — fall back to highest score, still excluding junk
+        val nonJunk = candidates.filter { (node, _) -> !isJunkId(node) }
+        return nonJunk.maxByOrNull { it.second } ?: candidates.maxByOrNull { it.second }
     }
 
     private fun collectScoredNodesAt(node: AccessibilityNodeInfo, x: Int, y: Int, results: MutableList<Pair<AccessibilityNodeInfo, Int>>) {

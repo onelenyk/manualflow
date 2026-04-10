@@ -126,18 +126,21 @@ export class TestRunner extends EventEmitter {
   }
 
   private parseStepLine(state: RunState, line: string): void {
-    // Maestro outputs steps like:
-    // ⚙️  launchApp       or     ║  ⚙️  launchApp
-    // ✅                  or     ║    ✅
-    // ❌  Error message   or     ║    ❌  Error message
+    const cleanLine = line.replace(/^[║│\s]+/, '').trim();
+    if (!cleanLine) return;
 
-    const cleanLine = line.replace(/^[║│\s]+/, '');
+    // Maestro --no-ansi output format:
+    //   Launch app "com.example"...
+    //   COMPLETED
+    //   Assert that "Login" is visible...
+    //   FAILED
+    //   Tap on "Button"...
+    //   COMPLETED
 
-    // Step started
-    const stepMatch = cleanLine.match(/^[⚙️🔧]\s*(.+)/u) ||
-                      cleanLine.match(/^>\s+(.+)/);
+    // Step started: lines ending with "..."
+    const stepMatch = cleanLine.match(/^(.+)\.\.\.\s*$/);
     if (stepMatch) {
-      // Mark previous running step as passed
+      // Mark previous running step as passed (if no explicit COMPLETED came)
       const prev = state.steps[state.steps.length - 1];
       if (prev?.status === 'running') prev.status = 'passed';
 
@@ -149,24 +152,52 @@ export class TestRunner extends EventEmitter {
       return;
     }
 
-    // Step passed
-    if (cleanLine.includes('✅') || cleanLine.includes('✓') || cleanLine.match(/COMPLETED/i)) {
+    // Flow header: "> Flow name"
+    if (cleanLine.startsWith('> Flow')) return;
+
+    // Step passed: COMPLETED
+    if (cleanLine === 'COMPLETED') {
       const last = state.steps[state.steps.length - 1];
       if (last) last.status = 'passed';
       this.emit(`step:${state.id}`, state.steps);
       return;
     }
 
-    // Step failed
-    const failMatch = cleanLine.match(/[❌✗]\s*(.*)/);
-    if (failMatch) {
+    // Step failed: FAILED
+    if (cleanLine === 'FAILED') {
       const last = state.steps[state.steps.length - 1];
-      if (last) {
-        last.status = 'failed';
-        last.error = failMatch[1].trim() || 'Failed';
-      }
+      if (last) last.status = 'failed';
       this.emit(`step:${state.id}`, state.steps);
       return;
+    }
+
+    // Error details after FAILED
+    if (state.steps.length > 0) {
+      const last = state.steps[state.steps.length - 1];
+      if (last.status === 'failed' && !last.error && !cleanLine.startsWith('==') && !cleanLine.startsWith('Possible') && !cleanLine.startsWith('-')) {
+        last.error = cleanLine;
+        this.emit(`step:${state.id}`, state.steps);
+      }
+    }
+
+    // Also handle emoji format (when --no-ansi is not used)
+    if (cleanLine.includes('✅') || cleanLine.includes('✓')) {
+      const last = state.steps[state.steps.length - 1];
+      if (last) last.status = 'passed';
+      this.emit(`step:${state.id}`, state.steps);
+    }
+    const emojiStepMatch = cleanLine.match(/^[⚙️🔧]\s*(.+)/u);
+    if (emojiStepMatch) {
+      const prev = state.steps[state.steps.length - 1];
+      if (prev?.status === 'running') prev.status = 'passed';
+      state.steps.push({ command: emojiStepMatch[1].trim(), status: 'running' });
+      this.emit(`step:${state.id}`, state.steps);
+    }
+    const emojiFailMatch = cleanLine.match(/[❌✗]\s*(.*)/);
+    if (emojiFailMatch) {
+      const last = state.steps[state.steps.length - 1];
+      if (last) { last.status = 'failed'; last.error = emojiFailMatch[1].trim() || 'Failed'; }
+      this.emit(`step:${state.id}`, state.steps);
     }
   }
 }

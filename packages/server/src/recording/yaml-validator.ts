@@ -1,4 +1,4 @@
-import type { ValidationResult, ValidationError } from '../../shared/src/types.js';
+import type { ValidationResult, ValidationError } from '@maestro-recorder/shared';
 
 const VALID_COMMAND_TYPES = [
   'launchApp',

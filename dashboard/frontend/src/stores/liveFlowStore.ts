@@ -59,6 +59,34 @@ export const useLiveFlowStore = create<LiveFlowStore>((set, get) => ({
     if (interaction.filteredAsKeyboardTap) return;
     if (interaction.status !== 'complete') return;
 
+    // Auto-detect appId from interaction data
+    if (get().appId === 'com.unknown.app') {
+      const SYSTEM = ['systemui', 'inputmethod', 'launcher', 'nexuslauncher', 'gboard', 'latin', 'android'];
+      let detected: string | null = null;
+
+      // Try 1: from element resourceId prefix (most reliable — always available)
+      const rid = interaction.element?.resourceId;
+      if (rid && rid.includes(':id/')) {
+        const pkg = rid.split(':id/')[0];
+        if (pkg && !SYSTEM.some(s => pkg.includes(s))) {
+          detected = pkg;
+        }
+      }
+
+      // Try 2: from accessibility event packageName
+      if (!detected) {
+        for (const evt of interaction.accessibilityEvents) {
+          const pkg = evt.packageName;
+          if (pkg && !SYSTEM.some(s => pkg.includes(s))) {
+            detected = pkg;
+            break;
+          }
+        }
+      }
+
+      if (detected) set({ appId: detected });
+    }
+
     const commands = mapInteractionToCommands(interaction as any);
     if (commands.length === 0) return;
 
@@ -199,7 +227,7 @@ function selectorYaml(name: string, cmd: any): string {
     case 'id': return `- ${name}:\n    id: "${esc(sel.id)}"`;
     case 'contentDescription': return `- ${name}: "${esc(sel.description)}"`;
     case 'relative': return `- ${name}:\n    ${sel.relation}: "${esc(sel.anchor)}"`;
-    case 'point': return `- ${name}:\n    point: "${sel.x},${sel.y}"`;
+    case 'point': return `- ${name}:\n    point: "${sel.x}%,${sel.y}%"`;
     default: return `- ${name}`;
   }
 }

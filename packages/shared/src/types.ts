@@ -103,7 +103,7 @@ export type TapOnSelector =
   | { kind: 'id'; id: string }
   | { kind: 'text'; text: string }
   | { kind: 'contentDescription'; description: string }
-  | { kind: 'relative'; relation: 'below' | 'above'; anchor: string }
+  | { kind: 'relative'; relation: 'below' | 'above' | 'containsChild'; anchor: string }
   | { kind: 'point'; x: number; y: number };
 
 // --- Device Info ---
