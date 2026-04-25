@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# ManualFlow runtime CLI — shipped inside the release tarball.
+# QA runs `manualflow start` and the dashboard opens at http://localhost:2344.
+#
+# Subcommands:
+#   start          install agent on device, launch server, open browser
+#   stop           stop server + agent
+#   status         show device / server / agent state
+#   doctor         check prereqs (node, adb, maestro, device)
+#   agent-install  reinstall the bundled agent APK
+#   server         run server only (foreground)
+#   --help
+
+set -euo pipefail
+
+# Resolve install dir whether invoked directly or via symlink.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do SELF="$(readlink "$SELF")"; done
+HERE="$(cd "$(dirname "$SELF")" && pwd)"
+
+SERVER_PORT="${SERVER_PORT:-2344}"
+AGENT_PORT="${AGENT_PORT:-50051}"
+AGENT_APK="$HERE/agent.apk"
+AGENT_PKG="com.maestrorecorder.agent.test"
+AGENT_CLASS="com.maestrorecorder.agent.RecorderInstrumentation#startServer"
+SERVER_JS="$HERE/server.mjs"
+STATIC_DIR="$HERE/static"
+PID_DIR="${TMPDIR:-/tmp}/manualflow"
+mkdir -p "$PID_DIR"
+
+red()   { printf "\033[31m%s\033[0m\n" "$*"; }
+green() { printf "\033[32m%s\033[0m\n" "$*"; }
+yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || { red "❌ missing: $1"; return 1; }
+}
+
+device_serial() {
+  adb devices -l 2>/dev/null | awk '/\sdevice / {print $1; exit}'
+}
+
+doctor() {
+  local ok=1
+  echo "Checking prerequisites…"
+  for tool in node adb; do
+    if require "$tool"; then
+      echo "  ✓ $tool $($tool --version 2>&1 | head -1)"
+    else
+      ok=0
+    fi
+  done
+  if [ -x "$HOME/.maestro/bin/maestro" ]; then
+    echo "  ✓ maestro $($HOME/.maestro/bin/maestro --version 2>/dev/null | head -1)"
+  else
+    red "  ❌ maestro not found at ~/.maestro/bin/maestro"
+    ok=0
+  fi
+  local serial
+  serial="$(device_serial || true)"
+  if [ -n "$serial" ]; then
+    echo "  ✓ device: $serial"
+  else
+    yellow "  ⚠️  no Android device connected (plug in + enable USB debugging)"
+  fi
+  [ "$ok" = 1 ] || { echo; red "Some prerequisites are missing. Re-run install.sh or install them manually."; exit 1; }
+}
+
+agent_install() {
+  local serial; serial="$(device_serial)"
+  [ -n "$serial" ] || { red "❌ No Android device connected"; exit 1; }
+  [ -f "$AGENT_APK" ] || { red "❌ agent.apk missing from $HERE"; exit 1; }
+  echo "→ Installing agent on $serial"
+  adb -s "$serial" install -r -t "$AGENT_APK" >/dev/null
+  green "✅ agent installed"
+}
+
+agent_start() {
+  local serial; serial="$(device_serial)"
+  [ -n "$serial" ] || { red "❌ No Android device connected"; exit 1; }
+  adb -s "$serial" forward "tcp:$AGENT_PORT" "tcp:$AGENT_PORT" >/dev/null
+  adb -s "$serial" shell am instrument -w \
+    -e class "$AGENT_CLASS" \
+    "$AGENT_PKG/androidx.test.runner.AndroidJUnitRunner" >/dev/null 2>&1 &
+  echo $! > "$PID_DIR/agent.pid"
+  sleep 3
+  if curl -sf "http://127.0.0.1:$AGENT_PORT/device-info" >/dev/null; then
+    green "✅ agent responsive on :$AGENT_PORT"
+  else
+    yellow "⚠️  agent started but not responding yet — give it a moment"
+  fi
+}
+
+agent_stop() {
+  local serial; serial="$(device_serial || true)"
+  if [ -n "$serial" ]; then
+    adb -s "$serial" shell am force-stop com.maestrorecorder.agent >/dev/null 2>&1 || true
+    adb -s "$serial" forward --remove "tcp:$AGENT_PORT" >/dev/null 2>&1 || true
+  fi
+  rm -f "$PID_DIR/agent.pid"
+}
+
+server_start_fg() {
+  cd "$HERE"
+  PORT="$SERVER_PORT" \
+    MANUALFLOW_STATIC_DIR="$STATIC_DIR" \
+    exec node "$SERVER_JS"
+}
+
+server_start_bg() {
+  if lsof -ti:"$SERVER_PORT" >/dev/null 2>&1; then
+    yellow "⚠️  port $SERVER_PORT already in use — assuming server is running"
+    return 0
+  fi
+  cd "$HERE"
+  PORT="$SERVER_PORT" MANUALFLOW_STATIC_DIR="$STATIC_DIR" \
+    nohup node "$SERVER_JS" >"$PID_DIR/server.log" 2>&1 &
+  echo $! > "$PID_DIR/server.pid"
+  sleep 1
+  green "✅ server: http://localhost:$SERVER_PORT"
+}
+
+server_stop() {
+  if [ -f "$PID_DIR/server.pid" ]; then
+    kill "$(cat "$PID_DIR/server.pid")" 2>/dev/null || true
+    rm -f "$PID_DIR/server.pid"
+  fi
+  lsof -ti:"$SERVER_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
+}
+
+open_browser() {
+  local url="http://localhost:$SERVER_PORT"
+  if   command -v open >/dev/null;     then open "$url"
+  elif command -v xdg-open >/dev/null; then xdg-open "$url" >/dev/null 2>&1
+  fi
+}
+
+cmd_start() {
+  doctor
+  agent_install
+  agent_start
+  server_start_bg
+  open_browser
+  echo
+  green "ManualFlow is running. Dashboard: http://localhost:$SERVER_PORT"
+  echo "  Logs:  $PID_DIR/server.log"
+  echo "  Stop:  manualflow stop"
+}
+
+cmd_stop() {
+  agent_stop
+  server_stop
+  green "✅ stopped"
+}
+
+cmd_status() {
+  echo "── Device ──"
+  local serial; serial="$(device_serial || true)"
+  [ -n "$serial" ] && echo "  ✓ $serial" || echo "  ✗ none"
+  echo "── Server ──"
+  if lsof -ti:"$SERVER_PORT" >/dev/null 2>&1; then
+    echo "  ✓ http://localhost:$SERVER_PORT"
+  else
+    echo "  ✗ not running"
+  fi
+  echo "── Agent ──"
+  if curl -sf "http://127.0.0.1:$AGENT_PORT/device-info" >/dev/null 2>&1; then
+    echo "  ✓ responsive on :$AGENT_PORT"
+  else
+    echo "  ✗ not responding"
+  fi
+}
+
+usage() {
+  cat <<EOF
+ManualFlow — record Android interactions, replay as Maestro flows.
+
+Usage: manualflow <command>
+
+  start          install agent + start server + open dashboard
+  stop           stop server + agent
+  status         show component state
+  doctor         check prereqs
+  agent-install  reinstall the bundled agent APK
+  server         run server only (foreground; for debugging)
+
+Env: SERVER_PORT (default 2344), AGENT_PORT (default 50051)
+EOF
+}
+
+case "${1:-}" in
+  start)         cmd_start ;;
+  stop)          cmd_stop ;;
+  status)        cmd_status ;;
+  doctor)        doctor ;;
+  agent-install) agent_install ;;
+  server)        server_start_fg ;;
+  ""|--help|-h)  usage ;;
+  *)             usage; exit 2 ;;
+esac

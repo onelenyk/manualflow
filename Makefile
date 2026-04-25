@@ -201,7 +201,20 @@ stop: ## Stop everything
 clean: ## Clean build artifacts
 	./gradlew clean
 	rm -rf dashboard/frontend/node_modules/.vite
+	rm -rf dist
 	@echo "✅ Cleaned"
+
+# ──────────────────────────────────────────────
+# Release (QA distribution)
+# ──────────────────────────────────────────────
+
+.PHONY: release
+release: ## Build a self-contained release tarball for QA (dist/manualflow-*.tar.gz)
+	@bash scripts/build-release.sh
+
+.PHONY: publish
+publish: ## Build + tag + push + create GitHub release (requires `gh auth login` once)
+	@bash scripts/publish.sh
 
 # ──────────────────────────────────────────────
 # Checks

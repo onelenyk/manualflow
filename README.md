@@ -123,6 +123,60 @@ If you change anything under `agent/src/main/kotlin/`, you must run `make agent-
 - **Dashboard assets 404** — the server serves the pre-built bundle from `dashboard/src/main/resources/static/`. Run `make build-frontend` to regenerate it.
 - **Nothing is being captured** — check `make status`; if the agent is not "Responsive", `make agent-restart`. If the device stream says `connected: false`, open the Agent tab and click Reconnect.
 
+## Distributing to QA
+
+The repo above is the *developer* setup. For QA you ship a single tarball — no Gradle, no Vite, no source clone.
+
+**Build a release** (once, on the dev machine):
+
+```sh
+make release
+# → dist/manualflow-<version>-<sha>.tar.gz
+```
+
+The tarball contains a bundled Node server, the prebuilt agent APK, the prebuilt dashboard, and a `manualflow` CLI.
+
+**Publish a release to GitHub** (one command, requires `gh auth login` once):
+
+```sh
+make publish    # builds, tags v<version>-<sha>, pushes, creates GH release with assets
+```
+
+This uploads the tarball plus `install.sh` to a GitHub Release, so QA's install command becomes:
+
+```sh
+curl -sSL https://github.com/onelenyk/manualflow/releases/latest/download/install.sh | bash
+```
+
+**Install on a QA machine** — one of two ways:
+
+```sh
+# (a) From a hosted release (set MANUALFLOW_RELEASE_URL in scripts/install.sh, or
+#     pass it as an env var). Uploads the tarball + install.sh to your release
+#     host, then QA runs:
+curl -sSL https://your-host/manualflow/install.sh | bash
+
+# (b) From a tarball you hand QA directly (USB stick, Slack, internal share):
+MANUALFLOW_TARBALL=./manualflow-0.1.0-abcd123.tar.gz bash scripts/install.sh
+```
+
+The installer does three things:
+1. Installs Node 20+, `adb`, and the Maestro CLI via `brew` (mac) or `apt` (linux). Any already-present tool is skipped.
+2. Extracts the tarball into `~/.manualflow/`.
+3. Symlinks the `manualflow` CLI into `/usr/local/bin` (or `~/.local/bin` if writable).
+
+**Then QA's whole workflow is:**
+
+```sh
+manualflow doctor    # verify prereqs + device
+manualflow start     # install agent on device, start server, open dashboard
+manualflow stop      # tear everything down
+```
+
+The dashboard opens at `http://localhost:2344`. There is no GUI app — it's just the same browser dashboard, served by a localhost daemon, with the agent APK and Maestro orchestration handled for them.
+
+**What QA still needs themselves:** a physical Android device with USB debugging enabled and the RSA prompt accepted. Everything else is in the tarball or installed by the script.
+
 ## License
 
 Released under the [MIT License](./LICENSE). Copyright (c) 2026 Nazar Lenyk.

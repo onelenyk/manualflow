@@ -11,6 +11,7 @@ import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
 import { flowRoutes } from './routes/flows.js';
 import { runnerRoutes } from './routes/runner.js';
+import { aiRoutes } from './routes/ai.js';
 import { DeviceStream } from './streaming/device-stream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,8 +48,11 @@ app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
 app.use('/api', flowRoutes());
 app.use('/api', runnerRoutes(state));
+app.use('/api', aiRoutes());
 
-const frontendDist = path.resolve(__dirname, '../../../dashboard/src/main/resources/static');
+const frontendDist = process.env.MANUALFLOW_STATIC_DIR
+  ? path.resolve(process.env.MANUALFLOW_STATIC_DIR)
+  : path.resolve(__dirname, '../../../dashboard/src/main/resources/static');
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
