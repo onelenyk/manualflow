@@ -23,6 +23,7 @@ class HttpServer(
             Log.d(TAG, "Request: ${session.method} ${session.uri}")
             when {
                 session.uri == "/device-info" && session.method == Method.GET -> handleDeviceInfo()
+                session.uri == "/health" && session.method == Method.GET -> handleHealth()
                 session.uri == "/element-at" && session.method == Method.POST -> handleElementAt(session)
                 session.uri == "/events/stream" && session.method == Method.GET -> handleEventStream()
                 session.uri == "/events" && session.method == Method.GET -> handleEventsPoll()
@@ -42,6 +43,14 @@ class HttpServer(
             .put("screenWidth", info.screenWidth)
             .put("screenHeight", info.screenHeight)
             .put("density", info.density)
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+    }
+
+    private fun handleHealth(): Response {
+        val root = elementResolver.checkRootAvailable()
+        val alive = root != null
+        root?.recycle()
+        val json = JSONObject().put("uiAutomationAlive", alive)
         return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
     }
 

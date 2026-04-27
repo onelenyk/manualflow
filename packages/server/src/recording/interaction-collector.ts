@@ -196,12 +196,55 @@ export class InteractionCollector extends EventEmitter {
     );
 
     if (isDuplicate) {
-      // Already have a touch interaction for this — attach as extra data
-      this.pending!.accessibilityEvents.push(event);
-      this.emit('interaction:updated', this.pending!);
+      const pending = this.pending!;
+      pending.accessibilityEvents.push(event);
+      this.upgradeElementFromAccessibilityClick(pending, event);
+      this.emit('interaction:updated', pending);
     } else {
       // Accessibility-only click (getevent missed it)
       this.createStandaloneInteraction(event);
+    }
+  }
+
+  /**
+   * The a11y TYPE_VIEW_CLICKED event's source is the exact node the OS
+   * dispatched the click to — authoritative for which element was clicked.
+   * The coordinate-based ElementResolver is a best-effort hit test and can
+   * pick a nearby labelled node (e.g. action-bar title) when the target
+   * itself has no text. Prefer a11y identifiers where they fill gaps,
+   * but never downgrade a resourceId already set by the coord lookup
+   * and never flip editable=true off (click events don't describe editable).
+   */
+  private upgradeElementFromAccessibilityClick(
+    interaction: RecordedInteraction,
+    event: AccessibilityEventData,
+  ): void {
+    const existing = interaction.element;
+    const eventHasId = !!event.resourceId && event.resourceId.length > 0;
+    const eventHasDesc = !!event.contentDescription && event.contentDescription.length > 0;
+    const existingHasId = !!existing?.resourceId && existing.resourceId.length > 0;
+    const existingHasDesc = !!existing?.contentDescription && existing.contentDescription.length > 0;
+
+    if (!existing) {
+      interaction.element = {
+        className: event.className,
+        text: event.text,
+        resourceId: eventHasId ? event.resourceId : undefined,
+        contentDescription: eventHasDesc ? event.contentDescription : undefined,
+        bounds: event.bounds ?? { left: 0, top: 0, right: 0, bottom: 0 },
+        clickable: true,
+        editable: false,
+        enabled: true,
+        focused: false,
+      };
+      return;
+    }
+
+    if (eventHasId && !existingHasId) {
+      existing.resourceId = event.resourceId;
+    }
+    if (eventHasDesc && !existingHasDesc) {
+      existing.contentDescription = event.contentDescription;
     }
   }
 
@@ -241,11 +284,26 @@ export class InteractionCollector extends EventEmitter {
 
   private async lookupElement(interaction: RecordedInteraction, x: number, y: number): Promise<void> {
     const element = await this.agent.elementAt(x, y);
-    if (element && interaction.status === 'pending') {
+    if (!element || interaction.status !== 'pending') return;
+
+    // If an a11y click already upgraded pending.element with authoritative
+    // identifiers, don't blank them out — fill coord-lookup fields (bounds,
+    // className, nearestLabel, editable, etc.) without downgrading id/desc.
+    const existing = interaction.element;
+    const existingHasId = !!existing?.resourceId && existing.resourceId.length > 0;
+    const existingHasDesc = !!existing?.contentDescription && existing.contentDescription.length > 0;
+
+    if (existingHasId || existingHasDesc) {
+      interaction.element = {
+        ...element,
+        resourceId: existingHasId ? existing!.resourceId : element.resourceId,
+        contentDescription: existingHasDesc ? existing!.contentDescription : element.contentDescription,
+      };
+    } else {
       interaction.element = element;
-      console.log(`[InteractionCollector] element at (${x},${y}): text="${element.text}" id="${element.resourceId}" nearestLabel="${(element as any).nearestLabel || 'NONE'}"`);
-      this.emit('interaction:updated', interaction);
     }
+    console.log(`[InteractionCollector] element at (${x},${y}): text="${element.text}" id="${interaction.element.resourceId}" nearestLabel="${(element as any).nearestLabel || 'NONE'}"`);
+    this.emit('interaction:updated', interaction);
   }
 
   private finalizePending(): void {

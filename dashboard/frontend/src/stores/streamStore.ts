@@ -1,19 +1,6 @@
 import { create } from 'zustand';
 import { useLiveFlowStore } from './liveFlowStore';
-
-interface Interaction {
-  id: number;
-  source: string;
-  status: string;
-  timestampMs: number;
-  touchAction?: any;
-  element?: any;
-  accessibilityEvents: any[];
-  keyboardState?: any;
-  filteredAsKeyboardTap: boolean;
-  screenWidth: number;
-  screenHeight: number;
-}
+import type { RecordedInteraction } from '@maestro-recorder/shared';
 
 interface StreamStore {
   connected: boolean;

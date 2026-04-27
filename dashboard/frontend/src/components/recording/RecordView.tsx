@@ -4,6 +4,7 @@ import { useStreamStore } from '../../stores/streamStore';
 import { useLiveFlowStore } from '../../stores/liveFlowStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { FlowBuilder } from './FlowBuilder';
+import { AIEnhancePanel } from '../ai/AIEnhancePanel';
 
 export function RecordView() {
   const {
@@ -33,20 +34,16 @@ export function RecordView() {
   };
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Track which interactions have been auto-added to flow
-  const addedToFlow = useRef<Set<number>>(new Set());
-
   // Connect SSE on mount
   useEffect(() => {
     connectSSE();
     return () => disconnectSSE();
   }, []);
 
-  // Auto-add completed interactions to flow
+  // Auto-add completed interactions to flow (deduplication handled in store)
   useEffect(() => {
     for (const i of interactions) {
-      if (i.status === 'complete' && !addedToFlow.current.has(i.id) && !ignoredIds.has(i.id)) {
-        addedToFlow.current.add(i.id);
+      if (i.status === 'complete' && !ignoredIds.has(i.id)) {
         addFromInteraction(i);
       }
     }
@@ -112,8 +109,8 @@ export function RecordView() {
         <ScreenMirror />
       </div>
 
-      {/* Center: Interactions */}
-      <div className="flex flex-col flex-1 gap-2 min-h-0">
+      {/* Center: Interactions (narrower) */}
+      <div className="flex flex-col flex-1 gap-2 min-h-0 min-w-0 max-w-[420px]">
         {/* Header */}
         <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-3 shrink-0">
           <div className="flex items-center justify-between">
@@ -226,6 +223,11 @@ export function RecordView() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* AI Enhance card */}
+      <div className="flex flex-col w-[300px] shrink-0 min-h-0 bg-slate-900/60 rounded-xl border border-slate-800 p-3">
+        <AIEnhancePanel />
       </div>
 
       {/* Right: Flow Builder */}

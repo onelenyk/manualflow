@@ -79,4 +79,8 @@ export const api = {
   startAgent: () => fetchJson<any>('/agent/start', { method: 'POST' }),
   stopAgent: () => fetchJson<any>('/agent/stop', { method: 'POST' }),
   buildAgent: () => fetchJson<any>('/agent/build', { method: 'POST' }),
+
+  // Stream
+  getStreamStatus: () => fetchJson<{ connected: boolean; device: string | null; interactionCount: number }>('/stream/status'),
+  reconnectStream: () => fetchJson<any>('/stream/reconnect', { method: 'POST' }),
 };

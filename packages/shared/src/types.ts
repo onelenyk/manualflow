@@ -220,3 +220,22 @@ export interface FlowEntry {
   /** How this entry was created */
   source: 'auto' | 'manual';
 }
+
+// --- AI Enhancement Types ---
+
+export type EnhancementType = 'optimize' | 'add' | 'remove' | 'modify';
+
+export interface EnhancementSuggestion {
+  type: EnhancementType;
+  description: string;
+  original?: MaestroCommand;
+  suggested: MaestroCommand;
+  reason: string;
+}
+
+export interface EnhancementResult {
+  summary: string;
+  suggestions: EnhancementSuggestion[];
+  enhancedYaml: string;
+  error?: string;
+}

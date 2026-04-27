@@ -37,6 +37,10 @@ export class TestRunner extends EventEmitter {
   private runs = new Map<string, RunState>();
   private nextId = 1;
 
+  hasActiveRuns(): boolean {
+    return this.processes.size > 0;
+  }
+
   start(flowId: string, flowName: string, yamlPath: string, deviceSerial?: string): RunState {
     const id = `run-${this.nextId++}`;
 

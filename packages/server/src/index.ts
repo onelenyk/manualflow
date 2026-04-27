@@ -5,14 +5,16 @@ import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import { deviceRoutes } from './routes/devices.js';
 import { streamingRoutes } from './routes/streaming.js';
-import { agentRoutes } from './routes/agent.js';
+import { agentRoutes, checkUiAutomation } from './routes/agent.js';
 import { debugRoutes } from './routes/debug.js';
 import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
 import { flowRoutes } from './routes/flows.js';
-import { runnerRoutes } from './routes/runner.js';
+import { runnerRoutes, runner } from './routes/runner.js';
 import { aiRoutes } from './routes/ai.js';
 import { DeviceStream } from './streaming/device-stream.js';
+import { startAgent, stopAgent } from './agent/agent-lifecycle.js';
+import { createRecoveryMonitor } from './agent/recovery-monitor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
@@ -39,10 +41,29 @@ export interface AppState {
 
 const state: AppState = { activeDevice: null, scrcpyProcess: null, deviceStream: new DeviceStream(), agentProcess: null };
 
+const recoveryMonitor = createRecoveryMonitor({
+  healthCheck: async () => {
+    const serial = state.activeDevice;
+    if (!serial) return true;
+    return checkUiAutomation(serial);
+  },
+  stopAgent: async () => {
+    const serial = state.activeDevice;
+    if (!serial) return;
+    await stopAgent(state, serial);
+  },
+  startAgent: async () => {
+    const serial = state.activeDevice;
+    if (!serial) return;
+    await startAgent(state, serial);
+  },
+  maestroGuard: () => runner.hasActiveRuns(),
+});
+
 app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
 app.use('/api', streamingRoutes(state));
-app.use('/api', agentRoutes(state));
+app.use('/api', agentRoutes(state, () => recoveryMonitor.getState()));
 app.use('/api', debugRoutes(state));
 app.use('/api', yamlRoutes());
 app.use('/api', templatesRoutes());
@@ -66,7 +87,13 @@ app.listen(PORT, HOST, () => {
   console.log(`MaestroRecorder dashboard: http://${HOST}:${PORT}`);
 });
 
+const RECOVERY_TICK_MS = 3000;
+const recoveryInterval = setInterval(() => {
+  if (state.activeDevice) recoveryMonitor.tick().catch(() => {});
+}, RECOVERY_TICK_MS);
+
 process.on('SIGINT', () => {
+  clearInterval(recoveryInterval);
   state.scrcpyProcess?.kill();
   state.agentProcess?.kill();
   state.deviceStream?.disconnect();

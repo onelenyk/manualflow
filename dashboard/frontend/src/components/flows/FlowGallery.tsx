@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useFlowStore, type FlowMeta } from '../../stores/flowStore';
+import { useEnhancementStore } from '../../stores/enhancementStore';
 import { api } from '../../api/client';
 import { FlowEditor } from './FlowEditor';
 import { RunViewer } from './RunViewer';
+import { EnhancementDialog } from '../ai/EnhancementDialog';
 
 interface MaestroStatus {
   installed: boolean;
@@ -17,6 +19,7 @@ export function FlowGallery() {
     flows, loading, error, activeRun, editingFlow,
     fetchFlows, deleteFlow, duplicateFlow, loadFlow, closeEditor,
   } = useFlowStore();
+  const { isEnhancing, currentResult, enhanceFlow, clear: clearEnhancement } = useEnhancementStore();
 
   const [maestro, setMaestro] = useState<MaestroStatus | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
@@ -37,6 +40,16 @@ export function FlowGallery() {
 
   const handleRun = (flowId: string) => {
     useFlowStore.getState().runFlowOnDevice(flowId, selectedDevice || undefined);
+  };
+
+  const handleEnhanceFlow = async (flowYaml: string) => {
+    await enhanceFlow(flowYaml);
+  };
+
+  const handleApplyEnhancements = async () => {
+    if (!currentResult) return;
+    clearEnhancement();
+    await fetchFlows();
   };
 
   if (activeRun) return <RunViewer />;
@@ -122,8 +135,10 @@ export function FlowGallery() {
                 key={flow.id}
                 flow={flow}
                 canRun={!!maestro?.installed && maestro.devices.length > 0}
+                isEnhancing={isEnhancing}
                 onRun={() => handleRun(flow.id)}
                 onEdit={() => loadFlow(flow.id)}
+                onEnhance={() => handleEnhanceFlow(flow.yaml)}
                 onDuplicate={() => duplicateFlow(flow.id, `${flow.name} (copy)`)}
                 onDelete={() => { if (confirm(`Delete "${flow.name}"?`)) deleteFlow(flow.id); }}
               />
@@ -131,15 +146,26 @@ export function FlowGallery() {
           </div>
         )}
       </div>
+
+      {/* Enhancement Dialog */}
+      {currentResult && (
+        <EnhancementDialog
+          result={currentResult}
+          onApply={handleApplyEnhancements}
+          onClose={clearEnhancement}
+        />
+      )}
     </div>
   );
 }
 
-function FlowCard({ flow, canRun, onRun, onEdit, onDuplicate, onDelete }: {
+function FlowCard({ flow, canRun, isEnhancing, onRun, onEdit, onEnhance, onDuplicate, onDelete }: {
   flow: FlowMeta;
   canRun: boolean;
+  isEnhancing: boolean;
   onRun: () => void;
   onEdit: () => void;
+  onEnhance: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
@@ -171,6 +197,14 @@ function FlowCard({ flow, canRun, onRun, onEdit, onDuplicate, onDelete }: {
             className="px-3 py-1.5 text-xs font-medium bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
           >
             Edit
+          </button>
+          <button
+            onClick={onEnhance}
+            disabled={isEnhancing}
+            className="px-2 py-1.5 text-xs text-slate-400 hover:text-purple-400 disabled:text-slate-600 transition-colors"
+            title="AI Enhance"
+          >
+            ✨
           </button>
           <button
             onClick={onDuplicate}

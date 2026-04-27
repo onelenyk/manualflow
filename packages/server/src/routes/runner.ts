@@ -9,7 +9,7 @@ import { TestRunner } from '../runner/test-runner.js';
 import { stopAgent, startAgent } from '../agent/agent-lifecycle.js';
 
 const storage = new FlowStorage();
-const runner = new TestRunner();
+export const runner = new TestRunner();
 const MAESTRO_BIN = path.join(os.homedir(), '.maestro', 'bin', 'maestro');
 
 export function runnerRoutes(state: AppState) {

@@ -40,6 +40,15 @@ class ElementResolver(
         private const val TAP_MARGIN_PX = 24
     }
 
+    /**
+     * Cheap UiAutomation liveness probe. Returns the active root if the bridge is alive,
+     * null if it has been severed (e.g. after target app restart or Maestro hand-off).
+     * Caller MUST recycle the returned node. No tree walk, no `onTreeAccess` callback.
+     */
+    fun checkRootAvailable(): AccessibilityNodeInfo? {
+        return uiAutomation.rootInActiveWindow
+    }
+
     fun findElementAt(x: Int, y: Int): UiElement {
         val rootNode = uiAutomation.rootInActiveWindow
         if (rootNode == null) {

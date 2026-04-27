@@ -92,4 +92,17 @@ export class AgentClient {
     const info = await this.deviceInfo();
     return info !== null;
   }
+
+  async health(): Promise<{ uiAutomationAlive: boolean } | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
 }

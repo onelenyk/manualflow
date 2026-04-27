@@ -7,6 +7,7 @@ export interface FlowMeta {
   commandCount: number;
   createdAt: number;
   updatedAt?: number;
+  yaml?: string;
 }
 
 export interface FlowDetail {

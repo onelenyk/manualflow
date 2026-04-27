@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useLiveFlowStore, type FlowEntry, type MappingAlternative } from '../../stores/liveFlowStore';
 import { useStreamStore } from '../../stores/streamStore';
 import { useFlowStore } from '../../stores/flowStore';
+import { useEnhancementStore } from '../../stores/enhancementStore';
+import { EnhanceButton } from '../ai/EnhanceButton';
+import { EnhancementDialog } from '../ai/EnhancementDialog';
 import type { MaestroCommand } from '@maestro-recorder/shared';
 
 const COMMAND_PALETTE: { group: string; commands: { label: string; command: MaestroCommand }[] }[] = [
@@ -50,9 +53,10 @@ const COMMAND_PALETTE: { group: string; commands: { label: string; command: Maes
 ];
 
 export function FlowBuilder() {
-  const { entries, appId, removeEntry, moveEntry, insertCommand, updateEntry, remapInteraction, setAppId, getYaml, clear } = useLiveFlowStore();
+  const { entries, appId, removeEntry, moveEntry, insertCommand, updateEntry, remapInteraction, setAppId, getYaml, applyEnhanced, clear } = useLiveFlowStore();
   const { interactions } = useStreamStore();
   const { fetchFlows } = useFlowStore();
+  const { isEnhancing, currentResult, enhanceFromInteractions, clear: clearEnhancement } = useEnhancementStore();
   const [copied, setCopied] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [saveName, setSaveName] = useState('');
@@ -79,6 +83,19 @@ export function FlowBuilder() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleEnhance = async () => {
+    await enhanceFromInteractions(interactions);
+  };
+
+  const handleApplyEnhancements = (yaml: string) => {
+    const result = applyEnhanced(yaml);
+    if (!result.ok) {
+      alert(result.error || 'Could not apply enhancement');
+      return;
+    }
+    clearEnhancement();
+  };
+
   const findInteraction = (id?: number) => {
     if (!id) return undefined;
     return interactions.find(i => i.id === id);
@@ -97,6 +114,11 @@ export function FlowBuilder() {
             <button onClick={handleCopy} className="px-2 py-1 text-[11px] bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors">
               {copied ? 'Copied!' : 'Copy'}
             </button>
+            <EnhanceButton
+              onClick={handleEnhance}
+              disabled={entries.length === 0}
+              isEnhancing={isEnhancing}
+            />
             <button onClick={() => setShowSave(!showSave)} className="px-2 py-1 text-[11px] bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors">
               Save
             </button>
@@ -189,6 +211,15 @@ export function FlowBuilder() {
           </div>
         )}
       </div>
+
+      {/* Enhancement Dialog */}
+      {currentResult && (
+        <EnhancementDialog
+          result={currentResult}
+          onApply={handleApplyEnhancements}
+          onClose={clearEnhancement}
+        />
+      )}
     </div>
   );
 }
