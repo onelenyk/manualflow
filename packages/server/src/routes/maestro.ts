@@ -37,7 +37,6 @@ function isPathGuardError(err: unknown): boolean {
 export function maestroRoutes(state: AppState): Router {
   const router = Router();
 
-  // Open / select a project folder. Scans and persists as current.
   router.post('/maestro/project', asyncHandler(async (req, res) => {
     const { folderPath } = req.body || {};
     if (!folderPath || typeof folderPath !== 'string') {
@@ -63,7 +62,6 @@ export function maestroRoutes(state: AppState): Router {
     res.json(project);
   }));
 
-  // Get currently open project (rescan) + recents.
   router.get('/maestro/project', asyncHandler(async (_req, res) => {
     const cfg = getMaestroProjectConfig();
 
@@ -86,7 +84,6 @@ export function maestroRoutes(state: AppState): Router {
     res.json({ project, recents: validRecents });
   }));
 
-  // Read a flow file (and any sibling .draft).
   router.get('/maestro/flow', asyncHandler(async (req, res) => {
     const p = req.query.path;
     if (!p || typeof p !== 'string') {
@@ -123,7 +120,6 @@ export function maestroRoutes(state: AppState): Router {
     res.json({ yaml, sha, draft });
   }));
 
-  // Write a draft (path is the original yaml absolute path; draft = path + '.draft').
   router.put('/maestro/draft', asyncHandler(async (req, res) => {
     const { path: p, yaml } = req.body || {};
     if (!p || typeof p !== 'string' || typeof yaml !== 'string') {
@@ -157,7 +153,6 @@ export function maestroRoutes(state: AppState): Router {
     res.json({ draftPath: resolvedDraft, sha });
   }));
 
-  // Discard a draft. `path` is the original yaml path; we delete `<path>.draft`.
   router.delete('/maestro/draft', asyncHandler(async (req, res) => {
     const p = req.query.path;
     if (!p || typeof p !== 'string') {
@@ -244,7 +239,6 @@ export function maestroRoutes(state: AppState): Router {
     res.json({ path: resolved, sha: newSha });
   }));
 
-  // Start a Maestro run on a flow inside the current project.
   router.post('/maestro/runs', asyncHandler(async (req, res) => {
     const { flowPath, deviceSerial } = req.body || {};
     if (!flowPath || typeof flowPath !== 'string') {

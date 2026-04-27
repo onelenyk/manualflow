@@ -15,7 +15,6 @@ const MAESTRO_BIN = path.join(os.homedir(), '.maestro', 'bin', 'maestro');
 export function runnerRoutes(state: AppState) {
   const router = Router();
 
-  // Maestro status: installed? version? available devices?
   router.get('/maestro/status', async (_req, res) => {
     let installed = false;
     let version = '';
@@ -30,7 +29,6 @@ export function runnerRoutes(state: AppState) {
       version = result;
     } catch {}
 
-    // Get connected devices via adb
     let devices: { serial: string; model: string }[] = [];
     try {
       const output = await adbExec('devices', '-l');
@@ -100,40 +98,34 @@ export function runnerRoutes(state: AppState) {
     res.json(run);
   });
 
-  // List runs
   router.get('/runs', (_req, res) => {
     res.json(runner.listRuns());
   });
 
-  // Get run status
   router.get('/runs/:runId', (req, res) => {
     const run = runner.getStatus(req.params.runId);
     if (!run) return res.status(404).json({ error: 'Run not found' });
     res.json(run);
   });
 
-  // Stop a run
   router.delete('/runs/:runId', (req, res) => {
     const ok = runner.stop(req.params.runId);
     if (!ok) return res.status(404).json({ error: 'Run not found or already finished' });
     res.json({ ok: true });
   });
 
-  // Pause a run (POSIX SIGSTOP)
   router.post('/runs/:runId/pause', (req, res) => {
     const ok = runner.pause(req.params.runId);
     if (!ok) return res.status(409).json({ error: 'Run cannot be paused (not running or already paused)' });
     res.json(runner.getStatus(req.params.runId));
   });
 
-  // Resume a paused run (POSIX SIGCONT)
   router.post('/runs/:runId/resume', (req, res) => {
     const ok = runner.resume(req.params.runId);
     if (!ok) return res.status(409).json({ error: 'Run is not paused' });
     res.json(runner.getStatus(req.params.runId));
   });
 
-  // SSE stream for live run output
   router.get('/runs/:runId/stream', (req, res) => {
     const runId = req.params.runId;
     const run = runner.getStatus(runId);

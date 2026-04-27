@@ -5,6 +5,7 @@ import { RecordView } from '../recording/RecordView';
 import { FlowGallery } from '../flows/FlowGallery';
 import { AgentView } from '../agent/AgentView';
 import { SetupWizard } from '../setup/SetupWizard';
+import { MaestroProjectView } from '../maestro/MaestroProjectView';
 import { useSetupStore } from '../../stores/setupStore';
 
 export function MainLayout() {
@@ -53,6 +54,7 @@ export function MainLayout() {
         <main className="flex-1 overflow-hidden p-4">
           {activeView === 'stream' && <RecordView />}
           {activeView === 'flows' && <FlowGallery />}
+          {activeView === 'maestro' && <MaestroProjectView />}
           {activeView === 'agent' && <AgentView />}
           {activeView === 'setup' && (
             <SetupWizard

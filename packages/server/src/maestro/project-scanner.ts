@@ -186,7 +186,7 @@ async function detectMaestroDir(rootPath: string): Promise<{ dir: string; warnin
   if (hasDot) return { dir: dotMaestro, warnings };
   if (hasPlain) return { dir: maestro, warnings };
 
-  const found = await scanRootForAppId(rootPath);
+  await scanRootForAppId(rootPath);
   return { dir: rootPath, warnings };
 }
 

@@ -1,3 +1,5 @@
+import type { MaestroProject } from '@maestro-recorder/shared';
+
 const BASE_URL = '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -47,6 +49,50 @@ export const api = {
 
   // Maestro
   getMaestroStatus: () => fetchJson<any>('/maestro/status'),
+
+  // Maestro Project
+  getMaestroProject: () => fetchJson<{ project: MaestroProject | null; recents: string[] }>('/maestro/project'),
+  openMaestroProject: (folderPath: string) =>
+    fetchJson<MaestroProject>('/maestro/project', { method: 'POST', body: JSON.stringify({ folderPath }) }),
+  getMaestroFlow: (path: string) =>
+    fetchJson<{ yaml: string; sha: string; draft: { yaml: string; sha: string } | null }>(
+      `/maestro/flow?path=${encodeURIComponent(path)}`
+    ),
+  saveMaestroFlow: (body: { path: string; yaml: string; expectedSha?: string; overwrite?: boolean }) =>
+    fetchJson<{ path: string; sha: string }>('/maestro/flow', { method: 'POST', body: JSON.stringify(body) }),
+  putMaestroDraft: (path: string, yaml: string) =>
+    fetchJson<{ draftPath: string; sha: string }>('/maestro/draft', { method: 'PUT', body: JSON.stringify({ path, yaml }) }),
+  deleteMaestroDraft: (path: string) =>
+    fetchJson<{ ok: true }>(`/maestro/draft?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  startMaestroRun: (flowPath: string, deviceSerial?: string) =>
+    fetchJson<any>('/maestro/runs', { method: 'POST', body: JSON.stringify({ flowPath, deviceSerial }) }),
+
+  // Maestro AI flow ops
+  aiPrettifyFlow: (yaml: string) =>
+    fetchJson<{ yaml: string; changesSummary: string }>('/ai/flow/prettify', {
+      method: 'POST',
+      body: JSON.stringify({ yaml }),
+    }),
+  aiVerifyYaml: (yaml: string) =>
+    fetchJson<{ ok: boolean; errors: { line?: number; col?: number; message: string; code: string }[]; warnings: string[] }>(
+      '/ai/flow/verify-yaml',
+      { method: 'POST', body: JSON.stringify({ yaml }) }
+    ),
+  aiVerifyFlow: (yaml: string) =>
+    fetchJson<{
+      deterministic: { ok: boolean; errors: { line?: number; col?: number; message: string; code: string }[]; warnings: string[] };
+      semantic: { ok: boolean; notes: string[]; suggestions: string[] } | null;
+    }>('/ai/flow/verify-flow', { method: 'POST', body: JSON.stringify({ yaml }) }),
+  aiExtractCommon: (flows: { path: string; yaml: string }[]) =>
+    fetchJson<{
+      subflows: { name: string; yaml: string; sourceFlows: string[] }[];
+      refactors: { flowPath: string; before: string; after: string; reason: string }[];
+    }>('/ai/flow/extract-common', { method: 'POST', body: JSON.stringify({ flows }) }),
+  aiCreateFromPrompt: (body: { prompt: string; appId?: string; exampleFlows?: string[] }) =>
+    fetchJson<{ relativePath: string; draftPath: string; yaml: string; appIdUsed: string }>(
+      '/ai/flow/create-from-prompt',
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
 
   // Test Runner
   startRun: (flowId: string, deviceSerial?: string) =>
