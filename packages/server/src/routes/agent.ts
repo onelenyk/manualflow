@@ -17,7 +17,7 @@ const localAgentPids = new Set<number>();
 /**
  * Check if agent APK is built and exists on disk
  */
-async function checkBuildReady(): Promise<{ ready: boolean; exists: boolean; versionCode?: string; buildTime?: string }> {
+export async function checkBuildReady(): Promise<{ ready: boolean; exists: boolean; versionCode?: string; buildTime?: string }> {
   const exists = fs.existsSync(APK_PATH);
   if (!exists) return { ready: false, exists: false };
 
@@ -29,7 +29,7 @@ async function checkBuildReady(): Promise<{ ready: boolean; exists: boolean; ver
 /**
  * Check if agent is installed on device
  */
-async function checkInstalled(serial: string): Promise<boolean> {
+export async function checkInstalled(serial: string): Promise<boolean> {
   try {
     const packages = await adbExec('-s', serial, 'shell', 'pm', 'list', 'packages', AGENT_PKG);
     return packages.includes(AGENT_PKG);
@@ -41,7 +41,7 @@ async function checkInstalled(serial: string): Promise<boolean> {
 /**
  * Check if agent instrumentation is running - multiple detection methods
  */
-async function checkRunning(serial: string): Promise<{ running: boolean; method: string }> {
+export async function checkRunning(serial: string): Promise<{ running: boolean; method: string }> {
   // Method 1: Check tracked local process
   if (localAgentPids.size > 0) {
     return { running: true, method: 'local' };
@@ -69,7 +69,7 @@ async function checkRunning(serial: string): Promise<{ running: boolean; method:
 /**
  * Check if agent HTTP server responds
  */
-async function checkResponsive(serial: string): Promise<boolean> {
+export async function checkResponsive(serial: string): Promise<boolean> {
   try {
     await adbExec('-s', serial, 'forward', `tcp:${AGENT_PORT}`, `tcp:${AGENT_PORT}`);
     const controller = new AbortController();
@@ -105,7 +105,7 @@ export async function checkUiAutomation(serial: string): Promise<boolean> {
 /**
  * Check if port forwarding is set up
  */
-async function checkPortForward(serial: string): Promise<boolean> {
+export async function checkPortForward(serial: string): Promise<boolean> {
   try {
     const forwards = await adbExec('-s', serial, 'forward', '--list');
     return forwards.includes(`tcp:${AGENT_PORT}`);

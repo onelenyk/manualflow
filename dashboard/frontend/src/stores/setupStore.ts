@@ -57,6 +57,15 @@ function readOnboarded(): boolean {
   }
 }
 
+// Check if user explicitly requested to see the wizard (bypasses auto-promote)
+function shouldForceWizard(): boolean {
+  try {
+    return sessionStorage.getItem('manualflow.forceWizard') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function writeOnboarded(v: boolean) {
   try {
     if (v) window.localStorage.setItem(ONBOARDED_KEY, '1');
@@ -105,9 +114,17 @@ export const useSetupStore = create<SetupStore>((set, get) => ({
       // least once. From then on, transient agent dips (Maestro pausing the
       // agent during a run, bridge severance, etc.) won't snap the UI back to
       // the wizard — the inline status badges surface the degraded state.
-      if (ready && !get().onboarded) {
+      // Skip auto-promote if the user explicitly requested to see the wizard.
+      const forceWizard = shouldForceWizard();
+      if (ready && !get().onboarded && !forceWizard) {
         writeOnboarded(true);
         set({ onboarded: true });
+      }
+      // Clear the force flag after first check so subsequent checks work normally
+      if (forceWizard) {
+        try {
+          sessionStorage.removeItem('manualflow.forceWizard');
+        } catch {}
       }
       set({
         agentBuildReady: agent.build?.ready ?? false,

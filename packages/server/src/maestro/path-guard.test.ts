@@ -118,4 +118,25 @@ describe('assertCreatePath', () => {
       expect(e.message).not.toContain(tmpDir);
     }
   });
+
+  it('accepts creating file in .maestro/flows with relative path', () => {
+    // This is the actual scenario from the app: paths like ".maestro/flows/my-flow.yaml"
+    const relativePath = '.maestro/flows/my-flow.yaml';
+    const result = assertCreatePath(tmpDir, relativePath);
+    expect(result).toContain('my-flow.yaml');
+    expect(result).toContain('.maestro');
+    expect(result).toContain(tmpDir);
+  });
+
+  it('accepts creating file in nested .maestro subdirectory', () => {
+    const relativePath = '.maestro/flows/subdir/deep/file.yaml';
+    const result = assertCreatePath(tmpDir, relativePath);
+    expect(result).toContain('file.yaml');
+    expect(result.startsWith(fs.realpathSync(tmpDir))).toBe(true);
+  });
+
+  it('rejects relative path traversing outside root', () => {
+    const relativePath = '.maestro/../../../etc/passwd';
+    expect(() => assertCreatePath(tmpDir, relativePath)).toThrow();
+  });
 });

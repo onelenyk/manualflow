@@ -1,9 +1,8 @@
 const navItems = [
-  { id: 'stream', label: 'Stream', icon: 'S' },
-  { id: 'flows', label: 'Flows', icon: 'F' },
-  { id: 'maestro', label: 'Maestro', icon: 'M' },
-  { id: 'agent', label: 'Agent', icon: 'A' },
-  { id: 'setup', label: 'Setup', icon: '⚙' },
+  { id: 'create-flow', label: 'Create flow', icon: 'C' },
+  { id: 'flow-gallery', label: 'Flow gallery', icon: 'G' },
+  { id: 'flow-finder', label: 'Flow Finder', icon: 'F' },
+  { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
 interface SidebarProps {

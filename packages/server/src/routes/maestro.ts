@@ -131,16 +131,20 @@ export function maestroRoutes(state: AppState): Router {
       return res.status(409).json({ error: 'no-project-open' });
     }
 
+    const project = await scanMaestroProject(cfg.current);
+    const rootPath = project.maestroDir;
+
     const draftPath = p + '.draft';
+    const fullDraftPath = path.join(rootPath, draftPath);
 
     let resolvedDraft: string;
     try {
       // If draft already exists, prefer the existing-path resolver (it follows
       // the realpath); otherwise create-path validates the parent chain.
-      if (fs.existsSync(draftPath)) {
-        resolvedDraft = assertExistingPath(cfg.current, draftPath);
+      if (fs.existsSync(fullDraftPath)) {
+        resolvedDraft = assertExistingPath(rootPath, draftPath);
       } else {
-        resolvedDraft = assertCreatePath(cfg.current, draftPath);
+        resolvedDraft = assertCreatePath(rootPath, draftPath);
       }
     } catch (err) {
       if (isPathGuardError(err)) return res.status(403).json({ error: 'path-guard' });
@@ -165,7 +169,8 @@ export function maestroRoutes(state: AppState): Router {
     }
 
     const draftPath = p + '.draft';
-    if (!fs.existsSync(draftPath)) {
+    const fullDraftPath = path.join(cfg.current, draftPath);
+    if (!fs.existsSync(fullDraftPath)) {
       return res.status(404).json({ error: 'draft-not-found' });
     }
 
@@ -194,12 +199,16 @@ export function maestroRoutes(state: AppState): Router {
       return res.status(409).json({ error: 'no-project-open' });
     }
 
-    const exists = fs.existsSync(p);
+    const project = await scanMaestroProject(cfg.current);
+    const rootPath = project.maestroDir;
+
+    const fullPath = path.join(rootPath, p);
+    const exists = fs.existsSync(fullPath);
 
     if (!exists) {
       let resolved: string;
       try {
-        resolved = assertCreatePath(cfg.current, p);
+        resolved = assertCreatePath(rootPath, p);
       } catch (err) {
         if (isPathGuardError(err)) return res.status(403).json({ error: 'path-guard' });
         throw err;
@@ -211,7 +220,7 @@ export function maestroRoutes(state: AppState): Router {
 
     let resolved: string;
     try {
-      resolved = assertExistingPath(cfg.current, p);
+      resolved = assertExistingPath(rootPath, p);
     } catch (err) {
       if (isPathGuardError(err)) return res.status(403).json({ error: 'path-guard' });
       throw err;
@@ -233,7 +242,7 @@ export function maestroRoutes(state: AppState): Router {
 
     // Atomic draft promotion: if a sibling draft existed, drop it now that the
     // canonical version is on disk.
-    const draftPath = p + '.draft';
+    const draftPath = path.join(rootPath, p + '.draft');
     await fs.promises.unlink(draftPath).catch(() => {});
 
     res.json({ path: resolved, sha: newSha });

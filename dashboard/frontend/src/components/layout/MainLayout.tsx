@@ -3,13 +3,13 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { RecordView } from '../recording/RecordView';
 import { FlowGallery } from '../flows/FlowGallery';
-import { AgentView } from '../agent/AgentView';
+import { SettingsView } from '../settings/SettingsView';
 import { SetupWizard } from '../setup/SetupWizard';
 import { MaestroProjectView } from '../maestro/MaestroProjectView';
 import { useSetupStore } from '../../stores/setupStore';
 
 export function MainLayout() {
-  const [activeView, setActiveView] = useState('stream');
+  const [activeView, setActiveView] = useState('create-flow');
   const { checking, onboarded, check, setOnboarded } = useSetupStore();
 
   useEffect(() => {
@@ -52,16 +52,10 @@ export function MainLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeView={activeView} onViewChange={setActiveView} />
         <main className="flex-1 overflow-hidden p-4">
-          {activeView === 'stream' && <RecordView />}
-          {activeView === 'flows' && <FlowGallery />}
-          {activeView === 'maestro' && <MaestroProjectView />}
-          {activeView === 'agent' && <AgentView />}
-          {activeView === 'setup' && (
-            <SetupWizard
-              onComplete={() => setActiveView('stream')}
-              onSkip={() => setActiveView('stream')}
-            />
-          )}
+          {activeView === 'create-flow' && <RecordView />}
+          {activeView === 'flow-gallery' && <FlowGallery />}
+          {activeView === 'flow-finder' && <MaestroProjectView />}
+          {activeView === 'settings' && <SettingsView />}
         </main>
       </div>
     </div>

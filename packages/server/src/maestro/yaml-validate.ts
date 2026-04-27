@@ -1,4 +1,4 @@
-import { parse, parseDocument } from 'yaml';
+import { parseAllDocuments } from 'yaml';
 
 export interface YamlValidationError {
   line?: number;
@@ -40,56 +40,73 @@ export function validateMaestroYaml(text: string): YamlValidationResult {
   const errors: YamlValidationError[] = [];
   const warnings: string[] = [];
 
-  let doc: ReturnType<typeof parseDocument>;
-  let parsed: unknown;
+  let configDoc: unknown = null;
+  let bodyDoc: unknown = null;
   try {
-    doc = parseDocument(text);
-    if (doc.errors && doc.errors.length > 0) {
-      for (const e of doc.errors) {
-        errors.push({
-          line: e.linePos?.[0]?.line,
-          col: e.linePos?.[0]?.col,
-          message: e.message,
-          code: 'INVALID_YAML',
-        });
+    const docs = parseAllDocuments(text);
+    for (const d of docs) {
+      if (d.errors && d.errors.length > 0) {
+        for (const e of d.errors) {
+          errors.push({
+            line: e.linePos?.[0]?.line,
+            col: e.linePos?.[0]?.col,
+            message: e.message,
+            code: 'INVALID_YAML',
+          });
+        }
+        return { ok: false, errors, warnings };
       }
+    }
+    if (docs.length === 0) {
+      errors.push({ message: 'empty document', code: 'INVALID_YAML' });
       return { ok: false, errors, warnings };
     }
-    parsed = doc.toJS();
+    configDoc = docs[0]!.toJS();
+    if (docs.length >= 2) {
+      bodyDoc = docs[1]!.toJS();
+    }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     errors.push({ message: msg, code: 'INVALID_YAML' });
     return { ok: false, errors, warnings };
   }
 
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!configDoc || typeof configDoc !== 'object' || Array.isArray(configDoc)) {
     errors.push({ message: 'top-level must be a mapping', code: 'INVALID_YAML' });
     return { ok: false, errors, warnings };
   }
 
-  const obj = parsed as Record<string, unknown>;
+  const obj = configDoc as Record<string, unknown>;
 
   if (typeof obj['appId'] !== 'string') {
     errors.push({ message: 'missing or non-string appId', code: 'MISSING_APP_ID' });
   }
 
-  const body = obj['commands'] ?? obj['flows'];
-  const bodyKey = 'commands' in obj ? 'commands' : ('flows' in obj ? 'flows' : null);
-
   let commandList: unknown[] | null = null;
 
-  if (Array.isArray(body)) {
-    commandList = body;
-  } else if (bodyKey === null) {
-    const values = Object.values(obj).filter(v => Array.isArray(v));
-    if (values.length === 0) {
-      errors.push({ message: 'no command body found', code: 'INVALID_BODY' });
+  if (bodyDoc !== null) {
+    if (!Array.isArray(bodyDoc)) {
+      errors.push({ message: 'command body (after `---`) must be an array', code: 'INVALID_BODY' });
       return { ok: false, errors, warnings };
     }
-    commandList = values[0] as unknown[];
+    commandList = bodyDoc;
   } else {
-    errors.push({ message: 'command body is not an array', code: 'INVALID_BODY' });
-    return { ok: false, errors, warnings };
+    const body = obj['commands'] ?? obj['flows'];
+    const bodyKey = 'commands' in obj ? 'commands' : ('flows' in obj ? 'flows' : null);
+
+    if (Array.isArray(body)) {
+      commandList = body;
+    } else if (bodyKey === null) {
+      const values = Object.values(obj).filter(v => Array.isArray(v));
+      if (values.length === 0) {
+        errors.push({ message: 'no command body found', code: 'INVALID_BODY' });
+        return { ok: false, errors, warnings };
+      }
+      commandList = values[0] as unknown[];
+    } else {
+      errors.push({ message: 'command body is not an array', code: 'INVALID_BODY' });
+      return { ok: false, errors, warnings };
+    }
   }
 
   if (!commandList || commandList.length === 0) {

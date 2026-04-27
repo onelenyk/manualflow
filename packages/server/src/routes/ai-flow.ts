@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import { Router } from 'express';
 import {
   prettifyFlow,
@@ -121,6 +122,22 @@ export function aiFlowRoutes(): Router {
     }
 
     const draftPath = path.join(projectRoot, '.maestro', result.relativePath) + '.draft';
+    const draftDir = path.dirname(draftPath);
+
+    // Ensure directory exists
+    try {
+      fs.mkdirSync(draftDir, { recursive: true });
+    } catch (e) {
+      return res.status(500).json({ error: 'failed-to-create-directory', path: draftDir });
+    }
+
+    // Write draft file
+    try {
+      fs.writeFileSync(draftPath, result.yaml, 'utf-8');
+    } catch (e) {
+      return res.status(500).json({ error: 'failed-to-write-draft', path: draftPath });
+    }
+
     res.json({ ...result, draftPath });
   }));
 

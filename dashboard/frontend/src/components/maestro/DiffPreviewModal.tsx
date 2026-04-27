@@ -19,7 +19,7 @@ export function DiffPreviewModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-5xl max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
+      <div className="w-full max-w-5xl h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
           <h3 className="text-sm font-semibold text-white">Prettify preview</h3>
         </div>

@@ -14,6 +14,8 @@ import { runnerRoutes, runner } from './routes/runner.js';
 import { aiRoutes } from './routes/ai.js';
 import { aiFlowRoutes } from './routes/ai-flow.js';
 import { maestroRoutes } from './routes/maestro.js';
+import { systemRoutes } from './routes/system.js';
+import { systemHealthRoutes } from './routes/system-health.js';
 import { getMaestroProjectConfig, saveMaestroProjectConfig } from './config/maestro-project.js';
 import fs from 'fs';
 import { DeviceStream } from './streaming/device-stream.js';
@@ -76,6 +78,8 @@ app.use('/api', runnerRoutes(state));
 app.use('/api', aiRoutes());
 app.use('/api', aiFlowRoutes());
 app.use('/api', maestroRoutes(state));
+app.use('/api', systemRoutes());
+app.use('/api', systemHealthRoutes(state));
 
 // Server-startup GC: drop missing recents and clear current if its folder is gone.
 try {

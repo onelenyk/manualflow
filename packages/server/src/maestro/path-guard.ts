@@ -45,19 +45,65 @@ export function assertCreatePath(root: string, target: string): string {
     throw guardError();
   }
 
-  const dir = path.dirname(target);
+  // Resolve target relative to root
+  const fullTarget = path.resolve(root, target);
 
-  // Walk the raw (pre-realpathSync) directory chain from dir upward, checking
-  // each component with lstat to detect symlinks before resolution.
-  // Stop as soon as we reach a component whose realpath equals realRootPath.
-  let walkDir = path.resolve(dir);
+  // For the initial bounds check, normalize both paths through realpath
+  // to handle /var -> /private/var symlinks on macOS
+  let realFullTarget: string;
+  try {
+    realFullTarget = fs.realpathSync(path.dirname(fullTarget));
+    realFullTarget = path.join(realFullTarget, path.basename(fullTarget));
+  } catch {
+    // Parent doesn't exist yet, try to normalize what we can
+    // Walk up until we find a directory that exists
+    let checkPath = fullTarget;
+    const parts: string[] = [];
+    while (true) {
+      try {
+        const real = fs.realpathSync(checkPath);
+        realFullTarget = path.join(real, ...parts.reverse());
+        break;
+      } catch {
+        const basename = path.basename(checkPath);
+        parts.push(basename);
+        checkPath = path.dirname(checkPath);
+        if (checkPath === basename) {
+          // Reached filesystem root
+          realFullTarget = fullTarget;
+          break;
+        }
+      }
+    }
+  }
+
+  // Check bounds using real paths
+  const rel = path.relative(realRootPath, realFullTarget);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw guardError();
+  }
+
+  const dir = path.dirname(target);
+  const fullDir = path.dirname(fullTarget);
+
+  // Walk the directory chain from fullDir upward to check for symlink escapes
+  // Skip non-existent directories (they'll be created when the file is written)
+  let walkDir = fullDir;
   while (true) {
     let stat: fs.Stats;
     try {
       stat = fs.lstatSync(walkDir);
     } catch {
-      throw guardError();
+      // Directory doesn't exist yet - check parent
+      const parent = path.dirname(walkDir);
+      if (parent === walkDir) {
+        // Reached filesystem root without finding realRootPath
+        throw guardError();
+      }
+      walkDir = parent;
+      continue;
     }
+
     if (stat.isSymbolicLink()) throw guardError();
     if (!stat.isDirectory()) throw guardError();
 
@@ -78,18 +124,5 @@ export function assertCreatePath(root: string, target: string): string {
     walkDir = parent;
   }
 
-  // Now resolve the dir itself (after symlink-free verification)
-  let realDir: string;
-  try {
-    realDir = fs.realpathSync(dir);
-  } catch {
-    throw guardError();
-  }
-
-  const resolvedTarget = path.join(realDir, base);
-  if (!resolvedTarget.startsWith(realRootPath + path.sep) && resolvedTarget !== realRootPath) {
-    throw guardError();
-  }
-
-  return resolvedTarget;
+  return fullTarget;
 }

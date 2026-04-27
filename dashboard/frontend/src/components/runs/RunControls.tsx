@@ -37,19 +37,27 @@ export function RunControls({ flowName, status, startedAt, finishedAt, onBack, o
   }[status];
 
   return (
-    <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4 shrink-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-sm text-slate-400 hover:text-white transition-colors">
+    <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4 shrink-0 min-w-0 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button
+            onClick={onBack}
+            className="text-sm text-slate-400 hover:text-white transition-colors shrink-0"
+          >
             {'←'} Back
           </button>
-          <h2 className="text-sm font-semibold text-white">{flowName}</h2>
-          <span className={`text-sm font-mono ${statusColor}`}>
+          <h2
+            className="text-sm font-semibold text-white truncate min-w-0 flex-1"
+            title={flowName}
+          >
+            {flowName}
+          </h2>
+          <span className={`text-sm font-mono shrink-0 ${statusColor}`}>
             {statusIcon} {status.toUpperCase()}
           </span>
-          <span className="text-xs text-slate-500">{duration}s</span>
+          <span className="text-xs text-slate-500 shrink-0">{duration}s</span>
         </div>
-        <div className="flex items-center gap-2" data-testid="run-controls">
+        <div className="flex items-center gap-2 shrink-0" data-testid="run-controls">
           {isRunning && (
             <button
               onClick={onPause}

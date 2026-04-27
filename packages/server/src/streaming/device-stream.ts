@@ -48,6 +48,11 @@ export class DeviceStream extends EventEmitter {
   private screenWidth = 1080;
   private screenHeight = 2400;
 
+  // Event diversity tracking (sliding window)
+  private recentEventTypes: { type: string; timestampMs: number }[] = [];
+  private readonly DIVERSITY_WINDOW_MS = 30000;
+  private readonly DIVERSITY_MAX_EVENTS = 50;
+
   get connected(): boolean { return this._connected; }
   get interactions(): RecordedInteraction[] { return this._interactions; }
   get deviceSerial(): string | null { return this.serial; }
@@ -210,6 +215,45 @@ export class DeviceStream extends EventEmitter {
     this._interactions = [];
   }
 
+  /** Get event type diversity for health check */
+  getEventDiversity(): { ok: boolean; recentTypes: string[]; warning: string | null } {
+    const now = Date.now();
+    // Trim to window
+    this.recentEventTypes = this.recentEventTypes.filter(e => now - e.timestampMs < this.DIVERSITY_WINDOW_MS);
+
+    const types = new Set(this.recentEventTypes.map(e => e.type));
+    const recentTypes = Array.from(types);
+
+    // If we only see windowChanged events, that's a problem (UiAutomation conflict)
+    if (recentTypes.length === 1 && recentTypes[0] === 'windowChanged') {
+      return {
+        ok: false,
+        recentTypes,
+        warning: `Only ${this.recentEventTypes.length}x windowChanged events in last 30s — UiAutomation may be blocked by another service (e.g. dev.mobile.maestro)`
+      };
+    }
+
+    // If we see fewer than 3 event types over time, also suspicious
+    if (recentTypes.length < 3 && this.recentEventTypes.length > 20) {
+      return {
+        ok: false,
+        recentTypes,
+        warning: `Only ${recentTypes.length} event types seen (${recentTypes.join(', ')}) — event capture may be degraded`
+      };
+    }
+
+    return { ok: true, recentTypes, warning: null };
+  }
+
+  /** Track an accessibility event type for diversity monitoring */
+  private trackEventType(type: string): void {
+    this.recentEventTypes.push({ type, timestampMs: Date.now() });
+    // Keep bounded by max events (time-based trimming happens in getEventDiversity)
+    if (this.recentEventTypes.length > this.DIVERSITY_MAX_EVENTS) {
+      this.recentEventTypes = this.recentEventTypes.slice(-Math.floor(this.DIVERSITY_MAX_EVENTS * 0.7));
+    }
+  }
+
   /** Get interactions by IDs */
   getInteractionsByIds(ids: number[]): RecordedInteraction[] {
     const idSet = new Set(ids);
@@ -270,6 +314,7 @@ export class DeviceStream extends EventEmitter {
           removedCount: event.removedCount,
           extras: event.extras,
         };
+        this.trackEventType(event.type);
         this.collector?.onAccessibilityEvent(a11yEvent);
       });
 

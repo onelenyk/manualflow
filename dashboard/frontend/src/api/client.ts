@@ -47,6 +47,13 @@ export const api = {
   duplicateFlow: (id: string, newName: string) =>
     fetchJson<any>(`/flows/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name: newName }) }),
 
+  // System
+  pickFolder: (opts?: { prompt?: string; defaultPath?: string }) =>
+    fetchJson<{ canceled: boolean; path: string | null }>('/system/pick-folder', {
+      method: 'POST',
+      body: JSON.stringify(opts ?? {}),
+    }),
+
   // Maestro
   getMaestroStatus: () => fetchJson<any>('/maestro/status'),
 
