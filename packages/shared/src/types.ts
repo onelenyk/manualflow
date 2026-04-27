@@ -239,3 +239,52 @@ export interface EnhancementResult {
   enhancedYaml: string;
   error?: string;
 }
+
+export type MaestroFileKind = 'flow' | 'config' | 'draft' | 'unknown';
+
+export interface MaestroFile {
+  path: string;
+  relativePath: string;
+  kind: MaestroFileKind;
+  name: string;
+  appId?: string;
+  hasDraft?: boolean;
+  error?: string;
+}
+
+export interface MaestroRules {
+  present: boolean;
+  raw?: string;
+  parsed?: {
+    executionOrder?: { flowsOrder?: string[]; continueOnFailure?: boolean };
+    tags?: string[];
+    includeTags?: string[];
+    excludeTags?: string[];
+    env?: Record<string, string>;
+    appId?: string;
+    flows?: string[];
+  };
+  parseError?: string;
+}
+
+export interface MaestroScanInfo {
+  truncated: boolean;
+  scanned: number;
+  capHit?: 'fileCount' | 'depth' | 'symlink';
+  skippedExamples: string[];
+}
+
+export interface MaestroProjectWarning {
+  code: 'BOTH_MAESTRO_DIRS' | 'SCAN_TRUNCATED' | 'SYMLINK_SKIPPED';
+  message: string;
+}
+
+export interface MaestroProject {
+  rootPath: string;
+  maestroDir: string;
+  files: MaestroFile[];
+  rules: MaestroRules;
+  scanInfo: MaestroScanInfo;
+  warnings: MaestroProjectWarning[];
+  scannedAt: number;
+}

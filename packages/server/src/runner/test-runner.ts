@@ -24,9 +24,17 @@ export interface RunState {
   lines: string[];
   steps: StepResult[];
   exitCode?: number;
+  serial?: string;
 }
 
 const MAESTRO_BIN = path.join(os.homedir(), '.maestro', 'bin', 'maestro');
+
+export class DeviceBusyError extends Error {
+  name = 'DeviceBusyError';
+  constructor(public deviceSerial: string, public activeRunId: string) {
+    super(`Device busy: ${deviceSerial} (active run ${activeRunId})`);
+  }
+}
 
 /**
  * Manages Maestro test runs.
@@ -35,13 +43,43 @@ const MAESTRO_BIN = path.join(os.homedir(), '.maestro', 'bin', 'maestro');
 export class TestRunner extends EventEmitter {
   private processes = new Map<string, ChildProcess>();
   private runs = new Map<string, RunState>();
+  private busySerials = new Set<string>();
   private nextId = 1;
 
   hasActiveRuns(): boolean {
     return this.processes.size > 0;
   }
 
-  start(flowId: string, flowName: string, yamlPath: string, deviceSerial?: string): RunState {
+  /**
+   * Starts a Maestro run.
+   *
+   * Reservation order is load-bearing and intentionally synchronous:
+   *   (1) check + insert into busySerials  (THIS TICK, no awaits)
+   *   (2) await preStart() (e.g. stopAgent so Maestro can take UiAutomation)
+   *   (3) spawn maestro
+   * If `serial` is busy, throws `DeviceBusyError` SYNCHRONOUSLY (not as a
+   * rejected promise) so concurrent callers can't both pass the check.
+   * Without `preStart`, the returned promise resolves in a single microtask.
+   */
+  start(
+    flowId: string,
+    flowName: string,
+    yamlPath: string,
+    deviceSerial?: string,
+    preStart?: () => Promise<void>,
+  ): Promise<RunState> {
+    if (deviceSerial && this.busySerials.has(deviceSerial)) {
+      let activeRunId = '';
+      for (const r of this.runs.values()) {
+        if (r.serial === deviceSerial && (r.status === 'running' || r.status === 'paused')) {
+          activeRunId = r.id;
+          break;
+        }
+      }
+      throw new DeviceBusyError(deviceSerial, activeRunId);
+    }
+    if (deviceSerial) this.busySerials.add(deviceSerial);
+
     const id = `run-${this.nextId++}`;
 
     const state: RunState = {
@@ -52,20 +90,81 @@ export class TestRunner extends EventEmitter {
       startedAt: Date.now(),
       lines: [],
       steps: [],
+      serial: deviceSerial,
     };
 
     this.runs.set(id, state);
+
+    // No preStart: spawn synchronously in this tick (preserves existing
+    // behavior where callers can read child-process state right after start).
+    if (!preStart) {
+      try {
+        this._spawnAndWire(state, yamlPath, deviceSerial);
+      } catch (err) {
+        if (deviceSerial) this.busySerials.delete(deviceSerial);
+        this.runs.delete(id);
+        throw err;
+      }
+      return Promise.resolve(state);
+    }
+
+    return this._launchWithPreStart(state, yamlPath, deviceSerial, preStart);
+  }
+
+  private async _launchWithPreStart(
+    state: RunState,
+    yamlPath: string,
+    deviceSerial: string | undefined,
+    preStart: () => Promise<void>,
+  ): Promise<RunState> {
+    const id = state.id;
+
+    try {
+      await preStart();
+    } catch (err) {
+      if (deviceSerial) this.busySerials.delete(deviceSerial);
+      this.runs.delete(id);
+      throw err;
+    }
+
+    try {
+      this._spawnAndWire(state, yamlPath, deviceSerial);
+    } catch (err) {
+      if (deviceSerial) this.busySerials.delete(deviceSerial);
+      this.runs.delete(id);
+      throw err;
+    }
+
+    return state;
+  }
+
+  private _spawnAndWire(
+    state: RunState,
+    yamlPath: string,
+    deviceSerial: string | undefined,
+  ): void {
+    const id = state.id;
 
     const args = ['test', '--no-ansi'];
     if (deviceSerial) args.push('--udid', deviceSerial);
     args.push(yamlPath);
 
-    const proc = spawn(MAESTRO_BIN, args, {
+    const proc: ChildProcess = spawn(MAESTRO_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, TERM: 'dumb' },
     });
 
     this.processes.set(id, proc);
+
+    // Single point of serial release: idempotent done-listener.
+    if (deviceSerial) {
+      let released = false;
+      this.once(`done:${id}`, () => {
+        if (released) return;
+        released = true;
+        this.busySerials.delete(deviceSerial);
+      });
+    }
 
     const handleOutput = (chunk: Buffer) => {
       const text = chunk.toString();
@@ -107,8 +206,6 @@ export class TestRunner extends EventEmitter {
       this.processes.delete(id);
       this.emit(`done:${id}`, state);
     });
-
-    return state;
   }
 
   stop(runId: string): boolean {

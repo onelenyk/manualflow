@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
-import { TestRunner, type RunState } from './test-runner.js';
+import { TestRunner, DeviceBusyError, type RunState } from './test-runner.js';
 
 // --- Mock child_process.spawn ---
 // Each test controls a fake ChildProcess so we can drive stdout/stderr
@@ -49,8 +49,8 @@ describe('TestRunner', () => {
   // ─── Lifecycle ──────────────────────────────────────────────
 
   describe('start', () => {
-    it('creates a new run with running status and unique id', () => {
-      const run = runner.start('flow-1', 'My Flow', '/tmp/flow.yaml');
+    it('creates a new run with running status and unique id', async () => {
+      const run = await runner.start('flow-1', 'My Flow', '/tmp/flow.yaml');
       expect(run.id).toMatch(/^run-\d+$/);
       expect(run.flowId).toBe('flow-1');
       expect(run.flowName).toBe('My Flow');
@@ -59,30 +59,30 @@ describe('TestRunner', () => {
       expect(run.lines).toEqual([]);
     });
 
-    it('generates sequential run ids', () => {
-      const a = runner.start('f', 'A', '/a');
-      const b = runner.start('f', 'B', '/b');
+    it('generates sequential run ids', async () => {
+      const a = await runner.start('f', 'A', '/a');
+      const b = await runner.start('f', 'B', '/b');
       expect(a.id).not.toBe(b.id);
     });
 
-    it('retrieves the run via getStatus', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('retrieves the run via getStatus', async () => {
+      const run = await runner.start('f', 'A', '/a');
       expect(runner.getStatus(run.id)).toBe(run);
     });
 
-    it('lists runs newest-first', () => {
-      const a = runner.start('f', 'A', '/a');
+    it('lists runs newest-first', async () => {
+      const a = await runner.start('f', 'A', '/a');
       // force differing startedAt
       (runner.getStatus(a.id) as RunState).startedAt = 100;
-      const b = runner.start('f', 'B', '/b');
+      const b = await runner.start('f', 'B', '/b');
       (runner.getStatus(b.id) as RunState).startedAt = 200;
       expect(runner.listRuns().map(r => r.id)).toEqual([b.id, a.id]);
     });
   });
 
   describe('stop', () => {
-    it('kills the process and marks run as stopped', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('kills the process and marks run as stopped', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       expect(runner.stop(run.id)).toBe(true);
       expect(proc.kill).toHaveBeenCalled();
@@ -94,8 +94,8 @@ describe('TestRunner', () => {
       expect(runner.stop('run-nope')).toBe(false);
     });
 
-    it('sends SIGCONT before SIGTERM when stopping a paused run', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('sends SIGCONT before SIGTERM when stopping a paused run', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       runner.pause(run.id);
       runner.stop(run.id);
@@ -109,8 +109,8 @@ describe('TestRunner', () => {
   // ─── Pause / Resume ─────────────────────────────────────────
 
   describe('pause / resume', () => {
-    it('pause(): sends SIGSTOP and marks status as paused', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('pause(): sends SIGSTOP and marks status as paused', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       expect(runner.pause(run.id)).toBe(true);
       expect(proc.kill).toHaveBeenCalledWith('SIGSTOP');
@@ -118,8 +118,8 @@ describe('TestRunner', () => {
       expect(runner.getStatus(run.id)?.pausedAt).toBeDefined();
     });
 
-    it('resume(): sends SIGCONT and returns to running', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('resume(): sends SIGCONT and returns to running', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       runner.pause(run.id);
       expect(runner.resume(run.id)).toBe(true);
@@ -128,7 +128,7 @@ describe('TestRunner', () => {
     });
 
     it('resume(): accumulates paused elapsed time', async () => {
-      const run = runner.start('f', 'A', '/a');
+      const run = await runner.start('f', 'A', '/a');
       runner.pause(run.id);
       await new Promise(r => setTimeout(r, 25));
       runner.resume(run.id);
@@ -136,15 +136,15 @@ describe('TestRunner', () => {
       expect(elapsed).toBeGreaterThanOrEqual(20);
     });
 
-    it('pause() fails if run is not running', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('pause() fails if run is not running', async () => {
+      const run = await runner.start('f', 'A', '/a');
       runner.pause(run.id);
       // Already paused
       expect(runner.pause(run.id)).toBe(false);
     });
 
-    it('resume() fails if run is not paused', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('resume() fails if run is not paused', async () => {
+      const run = await runner.start('f', 'A', '/a');
       expect(runner.resume(run.id)).toBe(false);
     });
 
@@ -157,8 +157,8 @@ describe('TestRunner', () => {
   // ─── Process lifecycle events ───────────────────────────────
 
   describe('process events', () => {
-    it('on clean exit (code 0) marks status=passed and emits done', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('on clean exit (code 0) marks status=passed and emits done', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       const done = vi.fn();
       runner.on(`done:${run.id}`, done);
@@ -168,16 +168,16 @@ describe('TestRunner', () => {
       expect(done).toHaveBeenCalled();
     });
 
-    it('on non-zero exit marks status=failed', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('on non-zero exit marks status=failed', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       proc.emit('close', 1);
       expect(runner.getStatus(run.id)?.status).toBe('failed');
       expect(runner.getStatus(run.id)?.exitCode).toBe(1);
     });
 
-    it('leftover running steps get finalised on close', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('leftover running steps get finalised on close', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, 'Tap on "Login"...\n');
       expect(runner.getStatus(run.id)?.steps[0].status).toBe('running');
@@ -189,8 +189,8 @@ describe('TestRunner', () => {
   // ─── Step parsing (real parser through real stdout) ────────
 
   describe('parseStepLine via stdout', () => {
-    it('parses a running → completed step (no-ansi format)', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('parses a running → completed step (no-ansi format)', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, 'Tap on "Submit"...\n');
       feedStdout(proc, 'COMPLETED\n');
@@ -199,8 +199,8 @@ describe('TestRunner', () => {
       expect(steps[0]).toMatchObject({ command: 'Tap on "Submit"', status: 'passed' });
     });
 
-    it('parses a failed step with error details', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('parses a failed step with error details', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, 'Assert "Welcome" is visible...\n');
       feedStdout(proc, 'FAILED\n');
@@ -210,16 +210,16 @@ describe('TestRunner', () => {
       expect(step.error).toBe('Element not found');
     });
 
-    it('ignores "> Flow ..." header lines', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('ignores "> Flow ..." header lines', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, '> Flow\n');
       feedStdout(proc, 'Launch app "com.x"...\n');
       expect(runner.getStatus(run.id)!.steps).toHaveLength(1);
     });
 
-    it('tolerates ║/│ prefixes that Maestro sometimes emits', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('tolerates ║/│ prefixes that Maestro sometimes emits', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, '║  Tap on "Ok"...\n');
       feedStdout(proc, '║  COMPLETED\n');
@@ -227,16 +227,16 @@ describe('TestRunner', () => {
       expect(steps[0]).toMatchObject({ command: 'Tap on "Ok"', status: 'passed' });
     });
 
-    it('strips ANSI color codes before parsing', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('strips ANSI color codes before parsing', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, '\x1b[32mTap on "Go"...\x1b[0m\n');
       feedStdout(proc, '\x1b[32mCOMPLETED\x1b[0m\n');
       expect(runner.getStatus(run.id)!.steps[0].command).toBe('Tap on "Go"');
     });
 
-    it('auto-closes a running step when a new step starts', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('auto-closes a running step when a new step starts', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, 'Step 1...\n');
       feedStdout(proc, 'Step 2...\n');
@@ -246,8 +246,8 @@ describe('TestRunner', () => {
       expect(steps[1].status).toBe('running');
     });
 
-    it('emits step events incrementally', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('emits step events incrementally', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       const onStep = vi.fn();
       runner.on(`step:${run.id}`, onStep);
@@ -256,8 +256,8 @@ describe('TestRunner', () => {
       expect(onStep).toHaveBeenCalledTimes(2);
     });
 
-    it('emits line events for every non-empty output line', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('emits line events for every non-empty output line', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       const onLine = vi.fn();
       runner.on(`line:${run.id}`, onLine);
@@ -268,8 +268,8 @@ describe('TestRunner', () => {
       expect(onLine).toHaveBeenNthCalledWith(3, 'baz');
     });
 
-    it('handles emoji format fallback (⚙️/✅/❌)', () => {
-      const run = runner.start('f', 'A', '/a');
+    it('handles emoji format fallback (⚙️/✅/❌)', async () => {
+      const run = await runner.start('f', 'A', '/a');
       const proc = latestProc();
       feedStdout(proc, '⚙️ Launch app\n');
       feedStdout(proc, '✅\n');
@@ -279,6 +279,80 @@ describe('TestRunner', () => {
       expect(steps).toHaveLength(2);
       expect(steps[0]).toMatchObject({ command: 'Launch app', status: 'passed' });
       expect(steps[1]).toMatchObject({ status: 'failed', error: 'boom' });
+    });
+  });
+
+  // ─── Per-device-serial busy lock ───────────────────────────
+
+  describe('device-busy reservation', () => {
+    it('throws DeviceBusyError synchronously when serial is reserved', async () => {
+      // First call reserves serial-X (no preStart, spawn happens this tick).
+      const firstPromise = runner.start('f1', 'A', 'p1', 'serial-X');
+
+      // Second call must throw SYNCHRONOUSLY — not as a rejected promise.
+      expect(() => runner.start('f2', 'B', 'p2', 'serial-X')).toThrow(DeviceBusyError);
+
+      // First promise still resolves cleanly.
+      const first = await firstPromise;
+      expect(first.id).toMatch(/^run-\d+$/);
+      expect(first.serial).toBe('serial-X');
+    });
+
+    it('DeviceBusyError carries the active run id', async () => {
+      const first = await runner.start('f1', 'A', 'p1', 'serial-Y');
+      try {
+        runner.start('f2', 'B', 'p2', 'serial-Y');
+        throw new Error('expected throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(DeviceBusyError);
+        expect((err as DeviceBusyError).deviceSerial).toBe('serial-Y');
+        expect((err as DeviceBusyError).activeRunId).toBe(first.id);
+      }
+    });
+
+    it('releases serial when done event fires; second start succeeds', async () => {
+      const first = await runner.start('f1', 'A', 'p1', 'serial-Z');
+      const proc = latestProc();
+      // Simulate maestro exit. Runner emits done:<id> from close handler,
+      // which the once-listener uses to delete the serial reservation.
+      proc.emit('close', 0);
+
+      const second = await runner.start('f2', 'B', 'p2', 'serial-Z');
+      expect(second.id).not.toBe(first.id);
+      expect(second.serial).toBe('serial-Z');
+    });
+
+    it('preStart throw releases the serial', async () => {
+      await expect(
+        runner.start('f1', 'A', 'p1', 'serial-W', async () => {
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+
+      // Same serial must now be free.
+      const recovered = await runner.start('f2', 'B', 'p2', 'serial-W');
+      expect(recovered.serial).toBe('serial-W');
+    });
+
+    it('runs without serial are not gated by the busy lock', async () => {
+      const a = await runner.start('f1', 'A', 'p1');
+      const b = await runner.start('f2', 'B', 'p2');
+      expect(a.id).not.toBe(b.id);
+      expect(a.serial).toBeUndefined();
+      expect(b.serial).toBeUndefined();
+    });
+
+    it('preStart runs after reservation and before spawn', async () => {
+      const events: string[] = [];
+      const promise = runner.start(
+        'f1', 'A', 'p1', 'serial-PS',
+        async () => { events.push('preStart'); },
+      );
+      // Reservation already happened — second start must throw synchronously.
+      expect(() => runner.start('f2', 'B', 'p2', 'serial-PS')).toThrow(DeviceBusyError);
+      await promise;
+      events.push('after-start');
+      expect(events).toEqual(['preStart', 'after-start']);
     });
   });
 });

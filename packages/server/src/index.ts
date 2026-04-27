@@ -12,6 +12,10 @@ import { templatesRoutes } from './routes/templates.js';
 import { flowRoutes } from './routes/flows.js';
 import { runnerRoutes, runner } from './routes/runner.js';
 import { aiRoutes } from './routes/ai.js';
+import { aiFlowRoutes } from './routes/ai-flow.js';
+import { maestroRoutes } from './routes/maestro.js';
+import { getMaestroProjectConfig, saveMaestroProjectConfig } from './config/maestro-project.js';
+import fs from 'fs';
 import { DeviceStream } from './streaming/device-stream.js';
 import { startAgent, stopAgent } from './agent/agent-lifecycle.js';
 import { createRecoveryMonitor } from './agent/recovery-monitor.js';
@@ -70,6 +74,18 @@ app.use('/api', templatesRoutes());
 app.use('/api', flowRoutes());
 app.use('/api', runnerRoutes(state));
 app.use('/api', aiRoutes());
+app.use('/api', aiFlowRoutes());
+app.use('/api', maestroRoutes(state));
+
+// Server-startup GC: drop missing recents and clear current if its folder is gone.
+try {
+  const cfg = getMaestroProjectConfig();
+  const recents = cfg.recents.filter(p => fs.existsSync(p));
+  const current = cfg.current && fs.existsSync(cfg.current) ? cfg.current : null;
+  if (recents.length !== cfg.recents.length || current !== cfg.current) {
+    saveMaestroProjectConfig({ current, recents });
+  }
+} catch {}
 
 const frontendDist = process.env.MANUALFLOW_STATIC_DIR
   ? path.resolve(process.env.MANUALFLOW_STATIC_DIR)

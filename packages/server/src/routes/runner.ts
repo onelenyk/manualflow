@@ -5,7 +5,7 @@ import os from 'os';
 import type { AppState } from '../index.js';
 import { adbExec } from '../index.js';
 import { FlowStorage } from '../storage/flow-storage.js';
-import { TestRunner } from '../runner/test-runner.js';
+import { TestRunner, DeviceBusyError } from '../runner/test-runner.js';
 import { stopAgent, startAgent } from '../agent/agent-lifecycle.js';
 
 const storage = new FlowStorage();
@@ -68,12 +68,27 @@ export function runnerRoutes(state: AppState) {
 
     const serial = deviceSerial || state.activeDevice || undefined;
 
-    // Release UiAutomation so Maestro can acquire it
-    if (serial) {
-      try { await stopAgent(state, serial); } catch {}
-    }
+    // Release UiAutomation so Maestro can acquire it. Runs as preStart so
+    // it only fires AFTER the runner reserves the serial.
+    const preStart = serial
+      ? async () => { try { await stopAgent(state, serial); } catch {} }
+      : undefined;
 
-    const run = runner.start(flowId, flow.meta.name, yamlPath, serial);
+    let run;
+    try {
+      run = await runner.start(flowId, flow.meta.name, yamlPath, serial, preStart);
+    } catch (err) {
+      if (err instanceof DeviceBusyError) {
+        return res.status(409).json({
+          error: 'device-busy',
+          deviceSerial: err.deviceSerial,
+          activeRunId: err.activeRunId,
+        });
+      }
+      // preStart already ran (we got past reservation); restart agent before bailing.
+      if (serial) startAgent(state, serial).catch(() => {});
+      throw err;
+    }
 
     // Auto-restart our agent when the Maestro run finishes
     if (serial) {
