@@ -15,16 +15,16 @@ function getYamlCommand(interaction: any, index: number): string {
     case 'tap':
       const x = interaction.touchAction?.x || 0;
       const y = interaction.touchAction?.y || 0;
-      return `- tap: { x: ${Math.round(x)}, y: ${Math.round(y)} }`;
+      return `tap: { x: ${Math.round(x)}, y: ${Math.round(y)} }`;
     case 'scroll':
       const direction = interaction.touchAction?.direction || 'down';
-      return `- scroll: ${direction}`;
+      return `scroll: ${direction}`;
     case 'long_press':
-      return `- longPress: { duration: 1000 }`;
+      return `longPress: { duration: 1000 }`;
     case 'window_changed':
-      return `- waitForAnimationToEnd`;
+      return `waitForAnimationToEnd`;
     default:
-      return `- # ${type}`;
+      return `# ${type}`;
   }
 }
 
@@ -86,58 +86,58 @@ export function RecordActiveStep({ onStop }: RecordActiveStepProps) {
   return (
     <div className="h-screen flex flex-col bg-slate-950">
       <div className="flex flex-1 overflow-hidden gap-4 p-4">
-        {/* Left: Device mirror */}
-        <div className="flex flex-col flex-1 min-h-0">
+        {/* Left: Device mirror - smaller */}
+        <div className="flex flex-col w-80 shrink-0">
           <FullscreenScreenMirror />
         </div>
 
-        {/* Right: Interactions + YAML two-column list */}
-        <div className="flex flex-col w-screen max-w-2xl shrink-0 bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
-            <h3 className="text-xs font-semibold text-white">Interactions & Commands</h3>
-            <span className="text-xs text-slate-400">{interactions.length} events</span>
+        {/* Right: Interactions + YAML - larger and easier to read */}
+        <div className="flex flex-col flex-1 bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/60">
+            <h3 className="text-sm font-bold text-white">Actions & Commands ({interactions.length})</h3>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-slate-950/30">
             {interactions.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-xs text-slate-500">
+              <div className="flex items-center justify-center h-full text-sm text-slate-400">
                 Waiting for interactions...
               </div>
             ) : (
-              <div className="divide-y divide-slate-800">
+              <div className="divide-y divide-slate-700">
                 {interactions.map((interaction, i) => (
-                  <div key={i} className="flex hover:bg-slate-800/30 transition-colors">
-                    {/* Interactions column */}
-                    <div className="flex-1 px-3 py-2 border-r border-slate-800 min-w-0">
-                      <div className="text-xs font-medium text-slate-300">
+                  <div key={i} className="grid grid-cols-2 gap-0 hover:bg-slate-800/40 transition-colors">
+                    {/* Action column */}
+                    <div className="px-6 py-4 border-r border-slate-700 bg-slate-950/50">
+                      <div className="text-sm font-semibold text-white mb-2">
                         {i + 1}. {interaction.touchAction?.type || interaction.source || 'Event'}
                       </div>
                       {interaction.element?.text && (
-                        <div className="text-slate-500 text-[10px] mt-0.5 truncate">
-                          {interaction.element.text}
+                        <div className="text-xs text-slate-400 mb-1">
+                          Element: {interaction.element.text}
                         </div>
                       )}
                       {(interaction.touchAction as any)?.x !== undefined && (
-                        <div className="text-slate-600 text-[10px] mt-0.5">
-                          x: {Math.round((interaction.touchAction as any).x)}, y: {Math.round((interaction.touchAction as any).y)}
+                        <div className="text-xs text-slate-500 font-mono">
+                          ({Math.round((interaction.touchAction as any).x)}, {Math.round((interaction.touchAction as any).y)})
                         </div>
                       )}
                     </div>
 
-                    {/* YAML column */}
-                    <div className="flex-1 px-3 py-2 min-w-0">
+                    {/* YAML command column */}
+                    <div className="px-6 py-4 flex items-center">
                       {selectedIndex === i ? (
-                        <textarea
+                        <input
+                          type="text"
                           value={getDisplayYaml(i)}
                           onChange={(e) => handleYamlChange(i, e.target.value)}
                           onBlur={() => setSelectedIndex(null)}
-                          className="w-full h-16 bg-slate-800 text-slate-100 text-xs p-2 rounded border border-slate-600 focus:border-blue-500 outline-none resize-none"
+                          className="w-full bg-blue-900/30 text-blue-100 text-sm p-2 rounded border border-blue-500 focus:border-blue-400 outline-none font-mono"
                           autoFocus
                         />
                       ) : (
                         <div
                           onClick={() => setSelectedIndex(i)}
-                          className="text-slate-300 text-xs font-mono p-2 rounded hover:bg-slate-700/50 cursor-pointer break-words"
+                          className="w-full text-sm text-slate-200 font-mono p-2 rounded hover:bg-slate-700/50 cursor-pointer break-words"
                         >
                           {getDisplayYaml(i)}
                         </div>
