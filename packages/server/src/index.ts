@@ -11,6 +11,7 @@ import { yamlRoutes } from './routes/yaml.js';
 import { templatesRoutes } from './routes/templates.js';
 import { flowRoutes } from './routes/flows.js';
 import { runnerRoutes, runner } from './routes/runner.js';
+import { recordingRoutes } from './routes/recording.js';
 import { aiRoutes } from './routes/ai.js';
 import { aiFlowRoutes } from './routes/ai-flow.js';
 import { maestroRoutes } from './routes/maestro.js';
@@ -78,6 +79,7 @@ const recoveryMonitor = createRecoveryMonitor({
 app.get('/health', (_req, res) => res.send('OK'));
 app.use('/api', deviceRoutes(state));
 app.use('/api', streamingRoutes(state));
+app.use('/api', recordingRoutes(state));
 app.use('/api', agentRoutes(state, () => recoveryMonitor.getState()));
 app.use('/api', debugRoutes(state));
 app.use('/api', yamlRoutes());
