@@ -7,7 +7,7 @@ export function ScreenMirror() {
   const [mirrorRunning, setMirrorRunning] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
-  const intervalRef = useRef<number>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Poll mirror status + refresh screenshot
   useEffect(() => {

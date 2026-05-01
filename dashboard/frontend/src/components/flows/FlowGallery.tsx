@@ -138,7 +138,7 @@ export function FlowGallery() {
                 isEnhancing={isEnhancing}
                 onRun={() => handleRun(flow.id)}
                 onEdit={() => loadFlow(flow.id)}
-                onEnhance={() => handleEnhanceFlow(flow.yaml)}
+                onEnhance={() => handleEnhanceFlow(flow.yaml ?? '')}
                 onDuplicate={() => duplicateFlow(flow.id, `${flow.name} (copy)`)}
                 onDelete={() => { if (confirm(`Delete "${flow.name}"?`)) deleteFlow(flow.id); }}
               />
