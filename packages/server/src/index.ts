@@ -29,6 +29,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Error handler for JSON parsing errors
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.error(`[JSON Parse Error] ${req.method} ${req.url}`, err.message);
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+  next(err);
+});
+
 export function adbExec(...args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('adb', args, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
