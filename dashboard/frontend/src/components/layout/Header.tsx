@@ -1,7 +1,14 @@
 import { useEffect } from 'react';
+import type { Mode } from '../qa/ModeToggle';
+import { ModeToggle } from '../qa/ModeToggle';
 import { useDeviceStore } from '../../stores/deviceStore';
 
-export function Header() {
+export interface HeaderProps {
+  mode?: Mode;
+  onModeChange?: (mode: Mode) => void;
+}
+
+export function Header({ mode, onModeChange }: HeaderProps) {
   const { devices, selectedDevice, fetchDevices, selectDevice, loading } = useDeviceStore();
 
   useEffect(() => {
@@ -12,11 +19,14 @@ export function Header() {
 
   return (
     <header className="h-12 bg-slate-900/95 backdrop-blur border-b border-slate-800 flex items-center justify-between px-5">
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 bg-red-500 rounded-md flex items-center justify-center">
-          <span className="text-white text-xs font-bold">M</span>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-red-500 rounded-md flex items-center justify-center">
+            <span className="text-white text-xs font-bold">M</span>
+          </div>
+          <h1 className="text-sm font-semibold text-white tracking-tight">MaestroRecorder</h1>
         </div>
-        <h1 className="text-sm font-semibold text-white tracking-tight">MaestroRecorder</h1>
+        {onModeChange && mode && <ModeToggle current={mode} onChange={onModeChange} />}
       </div>
 
       <div className="flex items-center gap-2">

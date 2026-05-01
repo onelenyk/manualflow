@@ -4,7 +4,7 @@ import type { RecordedInteraction } from '@maestro-recorder/shared';
 
 interface StreamStore {
   connected: boolean;
-  interactions: Interaction[];
+  interactions: RecordedInteraction[];
   selectedIds: Set<number>;
   ignoredIds: Set<number>;
   yaml: string;
@@ -57,7 +57,7 @@ export const useStreamStore = create<StreamStore>((set, get) => ({
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
-        const interaction = data.interaction as Interaction | undefined;
+        const interaction = data.interaction as RecordedInteraction | undefined;
 
         if (data.type === 'connected') {
           set({ connected: true });

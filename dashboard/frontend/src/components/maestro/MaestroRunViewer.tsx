@@ -10,9 +10,10 @@ export interface MaestroRunViewerProps {
   onStop: () => void;
   onRestart: () => void;
   onBack: () => void;
+  hideRawOutput?: boolean;
 }
 
-export function MaestroRunViewer({ run, onPause, onResume, onStop, onRestart, onBack }: MaestroRunViewerProps) {
+export function MaestroRunViewer({ run, onPause, onResume, onStop, onRestart, onBack, hideRawOutput }: MaestroRunViewerProps) {
   if (run === null) {
     return (
       <div className="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
@@ -41,7 +42,7 @@ export function MaestroRunViewer({ run, onPause, onResume, onStop, onRestart, on
         onRestart={onRestart}
       />
       <RunStepList steps={steps} />
-      <RunSseStream lines={run.lines} />
+      {hideRawOutput !== true && <RunSseStream lines={run.lines} />}
     </div>
   );
 }

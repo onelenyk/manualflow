@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Mode } from '../qa/ModeToggle';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { RecordView } from '../recording/RecordView';
@@ -6,11 +7,25 @@ import { FlowGallery } from '../flows/FlowGallery';
 import { SettingsView } from '../settings/SettingsView';
 import { SetupWizard } from '../setup/SetupWizard';
 import { MaestroProjectView } from '../maestro/MaestroProjectView';
+import { QAModeRouter } from '../qa/QAModeRouter';
 import { useSetupStore } from '../../stores/setupStore';
 
 export function MainLayout() {
   const [activeView, setActiveView] = useState('create-flow');
+  const [mode, setMode] = useState<Mode>(() => {
+    return (localStorage.getItem('manualflow.mode') as Mode) || 'qa';
+  });
   const { checking, onboarded, check, setOnboarded } = useSetupStore();
+
+  useEffect(() => {
+    check();
+    const id = setInterval(check, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('manualflow.mode', mode);
+  }, [mode]);
 
   useEffect(() => {
     check();
@@ -48,14 +63,20 @@ export function MainLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-950">
-      <Header />
+      <Header mode={mode} onModeChange={setMode} />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar activeView={activeView} onViewChange={setActiveView} />
+        {mode !== 'qa' && <Sidebar activeView={activeView} onViewChange={setActiveView} />}
         <main className="flex-1 overflow-hidden p-4">
-          {activeView === 'create-flow' && <RecordView />}
-          {activeView === 'flow-gallery' && <FlowGallery />}
-          {activeView === 'flow-finder' && <MaestroProjectView />}
-          {activeView === 'settings' && <SettingsView />}
+          {mode === 'qa' ? (
+            <QAModeRouter />
+          ) : (
+            <>
+              {activeView === 'create-flow' && <RecordView />}
+              {activeView === 'flow-gallery' && <FlowGallery />}
+              {activeView === 'flow-finder' && <MaestroProjectView />}
+              {activeView === 'settings' && <SettingsView />}
+            </>
+          )}
         </main>
       </div>
     </div>
