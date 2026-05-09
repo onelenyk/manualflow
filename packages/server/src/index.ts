@@ -22,6 +22,7 @@ import fs from 'fs';
 import { DeviceStream } from './streaming/device-stream.js';
 import { startAgent, stopAgent } from './agent/agent-lifecycle.js';
 import { createRecoveryMonitor } from './agent/recovery-monitor.js';
+import { gracefulShutdown } from './lifecycle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
@@ -114,8 +115,15 @@ app.get('*', (_req, res) => {
 // localhost. The trust model assumes a single-user dev machine; set
 // HOST=0.0.0.0 explicitly if you know you want LAN exposure.
 const HOST = process.env.HOST || '127.0.0.1';
-app.listen(PORT, HOST, () => {
-  console.log(`MaestroRecorder dashboard: http://${HOST}:${PORT}`);
+const httpServer = app.listen(PORT, HOST, () => {
+  const addr = httpServer.address();
+  const actualPort = typeof addr === 'object' && addr ? addr.port : PORT;
+  console.log(`MaestroRecorder dashboard: http://${HOST}:${actualPort}`);
+  // Machine-readable handshake for the Electron supervisor (see
+  // .omc/plans/electron-packaging.md §6). No other module may write
+  // to stdout between server boot and this line — the readline parser
+  // is line-anchored and takes the first match.
+  console.log(`MANUALFLOW_READY ${JSON.stringify({ port: actualPort, host: HOST })}`);
 });
 
 const RECOVERY_TICK_MS = 3000;
@@ -123,10 +131,10 @@ const recoveryInterval = setInterval(() => {
   if (state.activeDevice) recoveryMonitor.tick().catch(() => {});
 }, RECOVERY_TICK_MS);
 
-process.on('SIGINT', () => {
-  clearInterval(recoveryInterval);
-  state.scrcpyProcess?.kill();
-  state.agentProcess?.kill();
-  state.deviceStream?.disconnect();
-  process.exit(0);
-});
+const handleShutdown = (signal: string) => {
+  gracefulShutdown({ state, recoveryInterval, httpServer }, signal)
+    .finally(() => process.exit(0));
+};
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
