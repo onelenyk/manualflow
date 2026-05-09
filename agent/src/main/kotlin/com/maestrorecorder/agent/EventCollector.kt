@@ -10,16 +10,43 @@ import org.json.JSONObject
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.LinkedBlockingDeque
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 class EventCollector(private val uiAutomation: UiAutomation) {
     companion object {
         private const val TAG = "EventCollector"
+        private const val PENDING_QUEUE_CAPACITY = 256
+        private const val WORKER_POLL_TIMEOUT_MS = 100L
+        private const val NOTIFICATION_TIMEOUT_MS = 50L
+        private const val DROP_LOG_INTERVAL = 100L
+
+        // Only the event types `convertEvent` actually handles. Subscribing to
+        // TYPES_ALL_MASK floods the listener with events we'd just discard.
+        private const val SUBSCRIBED_EVENT_TYPES =
+            AccessibilityEvent.TYPE_VIEW_CLICKED or
+            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED or
+            AccessibilityEvent.TYPE_VIEW_SCROLLED or
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+            AccessibilityEvent.TYPE_VIEW_SELECTED or
+            AccessibilityEvent.TYPE_VIEW_FOCUSED or
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED
     }
 
     private val eventQueue = ConcurrentLinkedQueue<String>()
 
     private var pipedOut: PipedOutputStream? = null
     private var pipedIn: PipedInputStream? = null
+
+    // Bounded handoff between accessibility callback (producer)
+    // and worker thread (consumer). Listener never blocks.
+    private val pendingEvents = LinkedBlockingDeque<AccessibilityEvent>(PENDING_QUEUE_CAPACITY)
+    private val droppedCount = AtomicLong(0)
+    @Volatile private var running = false
+    private var worker: Thread? = null
 
     // Track scroll positions for direction detection
     private val lastScrollY = mutableMapOf<String, Int>()
@@ -29,13 +56,31 @@ class EventCollector(private val uiAutomation: UiAutomation) {
     private val lastKnownText = mutableMapOf<String, String>()
 
     private val listener = UiAutomation.OnAccessibilityEventListener { event ->
-        onAccessibilityEvent(event)
+        // Fast path: copy + offer. Never block the accessibility callback thread —
+        // a blocked callback thread freezes input dispatch system-wide.
+        try {
+            val copy = AccessibilityEvent.obtain(event)
+            if (!pendingEvents.offer(copy)) {
+                copy.recycle()
+                val dropped = droppedCount.incrementAndGet()
+                if (dropped % DROP_LOG_INTERVAL == 0L) {
+                    Log.w(TAG, "Dropped $dropped events (consumer slow or blocked)")
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Listener offer failed: ${t.message}")
+        }
     }
 
     fun start() {
         Log.i(TAG, "Starting accessibility event listener")
+        running = true
         applyServiceFlags()
         uiAutomation.setOnAccessibilityEventListener(listener)
+        worker = Thread({ workerLoop() }, "EventCollector-worker").apply {
+            isDaemon = true
+            start()
+        }
         Log.i(TAG, "Listener registered")
     }
 
@@ -56,8 +101,33 @@ class EventCollector(private val uiAutomation: UiAutomation) {
     }
 
     fun stop() {
+        running = false
         uiAutomation.setOnAccessibilityEventListener(null)
+        worker?.interrupt()
+        worker = null
+        // Recycle anything left in the queue
+        while (true) {
+            val e = pendingEvents.poll() ?: break
+            try { e.recycle() } catch (_: Exception) {}
+        }
         closePipe()
+    }
+
+    private fun workerLoop() {
+        while (running) {
+            val event = try {
+                pendingEvents.poll(WORKER_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS) ?: continue
+            } catch (_: InterruptedException) {
+                break
+            }
+            try {
+                onAccessibilityEvent(event)
+            } catch (e: Exception) {
+                Log.e(TAG, "Worker error processing event", e)
+            } finally {
+                try { event.recycle() } catch (_: Exception) {}
+            }
+        }
     }
 
     fun createStream(): PipedInputStream {
