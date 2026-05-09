@@ -3,16 +3,16 @@ import { WizardContainer } from '../../shared/WizardContainer';
 import { RecordPrepareStep } from './RecordPrepareStep';
 import { RecordActiveStep } from './RecordActiveStep';
 import { RecordSaveStep } from './RecordSaveStep';
-import { api } from '../../../../api/client';
+import { useDeviceStore } from '../../../../stores/deviceStore';
 
 export function RecordWizard({ onBack }: { onBack: () => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const selectDevice = useDeviceStore((s) => s.selectDevice);
 
   const handleStartRecording = async (serial: string) => {
     setStep(2);
-    // Select device - recording is handled by the agent which is already connected
     try {
-      await api.selectDevice(serial);
+      await selectDevice(serial);
     } catch (err) {
       console.error('Failed to select device:', err);
     }
@@ -29,17 +29,18 @@ export function RecordWizard({ onBack }: { onBack: () => void }) {
     }, 1500);
   };
 
+  if (step === 2) {
+    return <RecordActiveStep onStop={handleStopRecording} />;
+  }
+
   return (
     <WizardContainer
-      title={step === 1 ? 'Record a test' : step === 2 ? undefined : 'Save test'}
+      title={step === 1 ? 'Record a test' : 'Save test'}
       step={step}
       totalSteps={3}
       onBack={step === 1 ? onBack : undefined}
     >
       {step === 1 && <RecordPrepareStep onStartRecording={handleStartRecording} />}
-      {step === 2 && (
-        <RecordActiveStep onStop={handleStopRecording} />
-      )}
       {step === 3 && <RecordSaveStep onSave={handleSave} />}
     </WizardContainer>
   );
