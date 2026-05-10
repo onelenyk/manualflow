@@ -6,10 +6,13 @@
   "main": "dist/main.js",
   "scripts": {
     "build:ts": "tsc -p tsconfig.json",
+    "build:server": "node scripts/build-server.mjs",
     "fetch:platform-tools": "node scripts/fetch-platform-tools.mjs",
+    "prepackage": "npm run build:ts && npm run fetch:platform-tools && npm run build:server",
+    "premake": "npm run build:ts && npm run fetch:platform-tools && npm run build:server",
     "start": "npm run build:ts && npm run fetch:platform-tools && cross-env MANUALFLOW_DEV=1 electron .",
-    "package": "npm run build:ts && npm run fetch:platform-tools && electron-forge package",
-    "make": "npm run build:ts && npm run fetch:platform-tools && electron-forge make"
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.5.0",

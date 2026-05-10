@@ -28,6 +28,14 @@ function repoRoot(): string {
   return path.resolve(app.getAppPath(), '..', '..');
 }
 
+function packagedServerEntry(): string {
+  return path.join(process.resourcesPath, 'server-pack', 'dist', 'index.js');
+}
+
+function packagedStaticDir(): string {
+  return path.join(process.resourcesPath, 'server-pack', 'static');
+}
+
 function devServerEntry(): string {
   return path.resolve(repoRoot(), 'packages', 'server', 'src', 'index.ts');
 }
@@ -38,15 +46,30 @@ async function startEmbeddedServer(): Promise<ServerHandle> {
     devRoot: path.join(root, 'packages', 'electron'),
     resourcesPath: process.resourcesPath,
   });
+  if (isDev) {
+    return startServer({
+      serverEntry: devServerEntry(),
+      dev: true,
+      cwd: root,
+      adbPath: adb.adbPath ?? undefined,
+      onLog: (line, stream) => {
+        const tag = stream === 'stderr' ? 'server.err' : 'server';
+        // eslint-disable-next-line no-console
+        console.log(`[${tag}] ${line}`);
+      },
+    });
+  }
+
+  // Packaged: spawn the tsc-built CJS via Electron's bundled Node runtime.
   return startServer({
-    serverEntry: devServerEntry(),
-    dev: true,
-    cwd: root,
+    serverEntry: packagedServerEntry(),
+    dev: false,
+    cwd: path.join(process.resourcesPath, 'server-pack'),
     adbPath: adb.adbPath ?? undefined,
+    staticDir: packagedStaticDir(),
     onLog: (line, stream) => {
-      // Surface server output in the Electron main console for debugging.
-      // eslint-disable-next-line no-console
       const tag = stream === 'stderr' ? 'server.err' : 'server';
+      // eslint-disable-next-line no-console
       console.log(`[${tag}] ${line}`);
     },
   });
