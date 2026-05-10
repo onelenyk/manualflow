@@ -1,10 +1,24 @@
 import { Router } from 'express';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { AppState } from '../index.js';
 import { adbExec } from '../index.js';
 import { checkBuildReady, checkInstalled, checkRunning, checkResponsive, checkUiAutomation, checkPortForward } from './agent.js';
 import { runner } from './runner.js';
 import { getMaestroProjectConfig } from '../config/maestro-project.js';
 import { getOpenRouterStatus } from '../config/ai.js';
+
+const execFileAsync = promisify(execFile);
+
+async function detectMaestroCli(): Promise<boolean> {
+  const which = process.platform === 'win32' ? 'where' : 'which';
+  try {
+    await execFileAsync(which, ['maestro']);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const MAESTRO_DAEMON_PKG = 'dev.mobile.maestro';
 
@@ -68,8 +82,9 @@ export function systemHealthRoutes(state: AppState): Router {
       infra.mirror.active = !!state.scrcpyProcess;
     }
 
-    // Maestro section (daemon detection + test runner)
+    // Maestro section (CLI presence + daemon detection + test runner)
     const maestro: any = {
+      maestroPresent: await detectMaestroCli(),
       daemonRunning: false,
       testRunnerActive: false,
       conflictDetected: false
