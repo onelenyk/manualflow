@@ -26,6 +26,8 @@ const ELECTRON_PKG = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(ELECTRON_PKG, '..', '..');
 const SERVER_PKG = path.resolve(REPO_ROOT, 'packages', 'server');
 const SHARED_PKG = path.resolve(REPO_ROOT, 'packages', 'shared');
+const FRONTEND_PKG = path.resolve(REPO_ROOT, 'dashboard', 'frontend');
+const FRONTEND_DIST = path.resolve(REPO_ROOT, 'dashboard', 'src', 'main', 'resources', 'static');
 const STAGING = path.resolve(ELECTRON_PKG, 'build', 'server-pack');
 
 function log(...args) { console.log('[build-server]', ...args); }
@@ -49,6 +51,22 @@ function compileServer() {
   execFileSync('npx', ['tsc', '-p', path.join(SERVER_PKG, 'tsconfig.build.json')], {
     cwd: REPO_ROOT, stdio: 'inherit',
   });
+}
+
+function compileFrontend() {
+  log('building dashboard frontend (vite build)');
+  execFileSync('npx', ['vite', 'build'], {
+    cwd: FRONTEND_PKG, stdio: 'inherit',
+  });
+}
+
+function copyFrontendToStaging() {
+  if (!existsSync(FRONTEND_DIST)) {
+    throw new Error(`frontend dist not found at ${FRONTEND_DIST} — did compileFrontend() run?`);
+  }
+  // Server expects MANUALFLOW_STATIC_DIR/index.html. We stage the built SPA
+  // under server-pack/static so the supervisor can pass an absolute path.
+  cpSync(FRONTEND_DIST, path.join(STAGING, 'static'), { recursive: true });
 }
 
 function synthesizePackageJson() {
@@ -122,10 +140,12 @@ function main() {
 
   compileShared();
   compileServer();
+  compileFrontend();
   synthesizePackageJson();
   installRuntimeDeps();
   dropInSharedPackage();
   copyServerDist();
+  copyFrontendToStaging();
   runElectronRebuild();
 
   log('staging ready:', STAGING);
