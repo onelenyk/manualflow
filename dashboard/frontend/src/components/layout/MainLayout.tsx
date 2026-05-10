@@ -15,7 +15,7 @@ export function MainLayout() {
   const [mode, setMode] = useState<Mode>(() => {
     return (localStorage.getItem('manualflow.mode') as Mode) || 'qa';
   });
-  const { checking, onboarded, check, setOnboarded } = useSetupStore();
+  const { onboarded, check, setOnboarded } = useSetupStore();
 
   useEffect(() => {
     check();
@@ -27,30 +27,15 @@ export function MainLayout() {
     localStorage.setItem('manualflow.mode', mode);
   }, [mode]);
 
-  useEffect(() => {
-    check();
-    const id = setInterval(check, 4000);
-    return () => clearInterval(id);
-  }, []);
-
   // Onboarding is a one-time gate. The wizard appears only until the user has
   // either completed it explicitly or auto-promoted by reaching a ready state
   // (handled in setupStore.check). Mid-session degradation is surfaced via
   // inline status badges, never by replacing the whole UI.
+  //
+  // Note: we keep the wizard mounted even while `checking` is true. The check()
+  // poll flips `checking` true→false every interval; unmounting on checking
+  // would reset the wizard's stepIdx on every tick.
   if (!onboarded) {
-    if (checking) {
-      return (
-        <div className="h-screen flex items-center justify-center bg-slate-950">
-          <div className="flex items-center gap-2 text-slate-500 text-xs">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Checking setup...
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="h-screen bg-slate-950">
         <SetupWizard
