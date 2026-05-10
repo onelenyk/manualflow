@@ -3,6 +3,7 @@ import path from 'node:path';
 import { startServer, stopServer, ServerHandle } from './serverProcess.js';
 import { resolveBundledAdb } from './adbBridge.js';
 import { detectMaestro, maestroInstallHint, type MaestroDetection } from './maestroDetect.js';
+import { maybePromptForMaestroProject } from './firstRun.js';
 
 const isDev = process.env.MANUALFLOW_DEV === '1' || !app.isPackaged;
 const VITE_DEV_URL = process.env.VITE_DEV_URL || 'http://localhost:5173';
@@ -136,6 +137,14 @@ async function bootstrap(): Promise<void> {
   }));
 
   await createWindow();
+
+  // First-run UX: if no Maestro project is configured, ask the user where
+  // their flows live. Non-blocking — the dashboard still loads either way.
+  if (server) {
+    maybePromptForMaestroProject({ httpBase: server.httpBase, parentWindow: win ?? undefined })
+      // eslint-disable-next-line no-console
+      .catch((e) => console.warn('[main] first-run prompt failed:', e));
+  }
 }
 
 let shuttingDown = false;

@@ -13,6 +13,8 @@ const config = {
   packagerConfig: {
     name: 'ManualFlow',
     appBundleId: 'dev.manualflow.app',
+    icon: './resources/icons/icon', // forge auto-resolves .icns / .ico / .png
+    appCopyright: 'See Resources/NOTICE.txt for third-party attribution.',
     // npm workspaces hoist forge's own deps to the repo-root node_modules;
     // electron-packager's flora-colossus walker can't resolve them from the
     // workspace dir. We don't actually need pruning because the runtime server
@@ -42,13 +44,33 @@ const config = {
     extraResource: [
       './build/server-pack',
       './resources/platform-tools',
+      './resources/NOTICE.txt',
     ],
     osxSign: undefined,    // TODO: enable in Phase 4 when Developer ID is set
     osxNotarize: undefined, // TODO: enable in Phase 4
   },
   rebuildConfig: {},
   makers: [
-    // Filled in Phase 4 (DMG / Squirrel / Deb / Zip).
+    {
+      name: '@electron-forge/maker-dmg',
+      platforms: ['darwin'],
+      config: { name: 'ManualFlow' },
+    },
+    {
+      name: '@electron-forge/maker-zip',
+      platforms: ['darwin', 'linux'],
+      config: {},
+    },
+    {
+      name: '@electron-forge/maker-squirrel',
+      platforms: ['win32'],
+      config: { name: 'ManualFlow' },
+    },
+    {
+      name: '@electron-forge/maker-deb',
+      platforms: ['linux'],
+      config: {},
+    },
   ],
   plugins: [],
 };
