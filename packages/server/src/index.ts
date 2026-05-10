@@ -23,6 +23,7 @@ import { DeviceStream } from './streaming/device-stream.js';
 import { startAgent, stopAgent } from './agent/agent-lifecycle.js';
 import { createRecoveryMonitor } from './agent/recovery-monitor.js';
 import { gracefulShutdown } from './lifecycle.js';
+import { adbExecutable } from './util/adb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '2344', 10);
@@ -42,7 +43,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 export function adbExec(...args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('adb', args, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(adbExecutable(), args, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(`adb ${args.join(' ')} failed: ${stderr || err.message}`));
       else resolve(stdout.trim());
     });

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { adbExec, type AppState } from '../index.js';
+import { adbExecutable } from '../util/adb.js';
 
 export const AGENT_PKG = 'com.maestrorecorder.agent.test';
 export const AGENT_PKG_MAIN = 'com.maestrorecorder.agent';
@@ -44,7 +45,7 @@ export async function startAgent(state: AppState, serial: string): Promise<Agent
     state.agentProcess = null;
   }
 
-  const proc = spawn('adb', [
+  const proc = spawn(adbExecutable(), [
     '-s', serial, 'shell', 'am', 'instrument', '-w',
     '-e', 'class', 'com.maestrorecorder.agent.RecorderInstrumentation#startServer',
     `${AGENT_PKG}/androidx.test.runner.AndroidJUnitRunner`,

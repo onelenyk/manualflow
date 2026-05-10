@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { spawn } from 'child_process';
 import http from 'http';
 import { adbExec, type AppState } from '../index.js';
+import { adbExecutable } from '../util/adb.js';
 
 const AGENT_PORT = 50051;
 
@@ -105,7 +106,7 @@ export function debugRoutes(state: AppState) {
 
     res.write(`data: ${JSON.stringify({ type: 'info', message: `Streaming kernel events from ${devicePath}` })}\n\n`);
 
-    const proc = spawn('adb', ['-s', serial, 'shell', 'getevent', '-lt', devicePath]);
+    const proc = spawn(adbExecutable(), ['-s', serial, 'shell', 'getevent', '-lt', devicePath]);
     let buffer = '';
 
     proc.stdout.on('data', (chunk: Buffer) => {

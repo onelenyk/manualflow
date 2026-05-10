@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { execFile } from 'child_process';
 import type { RecordedInteraction, AccessibilityEventData, UiElement, UserAction } from '@maestro-recorder/shared';
+import { adbExecutable } from '../util/adb.js';
 import { GeteventStream, discoverInputDevice } from '../recording/getevent-parser.js';
 import { TouchStateMachine } from '../recording/touch-state-machine.js';
 import { CoordinateConverter } from '../recording/coordinate-converter.js';
@@ -367,7 +368,7 @@ export class DeviceStream extends EventEmitter {
 
   private adbExec(...args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile('adb', ['-s', this.serial!, ...args], (err, stdout) => {
+      execFile(adbExecutable(), ['-s', this.serial!, ...args], (err, stdout) => {
         if (err) reject(err);
         else resolve(stdout.trim());
       });

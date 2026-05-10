@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { spawn, execFile } from 'child_process';
 import { adbExec, type AppState } from '../index.js';
+import { adbExecutable } from '../util/adb.js';
 
 export function deviceRoutes(state: AppState) {
   const router = Router();
@@ -106,7 +107,7 @@ export function deviceRoutes(state: AppState) {
 
   router.get('/devices/:serial/screenshot', (req, res) => {
     const serial = req.params.serial;
-    const proc = execFile('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], {
+    const proc = execFile(adbExecutable(), ['-s', serial, 'exec-out', 'screencap', '-p'], {
       maxBuffer: 10 * 1024 * 1024,
       encoding: 'buffer' as any,
     }, (err, stdout) => {

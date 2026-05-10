@@ -1,9 +1,8 @@
 import type { MaestroProject } from '@maestro-recorder/shared';
-
-const BASE_URL = '/api';
+import { apiUrl } from './config';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE_URL}${url}`, {
+  const response = await fetch(apiUrl(url), {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
@@ -22,7 +21,7 @@ export const api = {
   launchMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror`, { method: 'POST' }),
   stopMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/stop`, { method: 'POST' }),
   getMirrorStatus: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/status`),
-  screenshotUrl: (serial: string) => `/api/devices/${serial}/screenshot?t=${Date.now()}`,
+  screenshotUrl: (serial: string) => apiUrl(`/devices/${serial}/screenshot?t=${Date.now()}`),
   getDeviceSettings: (serial: string) => fetchJson<Record<string, boolean>>(`/devices/${serial}/settings`),
   setDeviceSetting: (serial: string, key: string, value: boolean) =>
     fetchJson<any>(`/devices/${serial}/settings`, { method: 'POST', body: JSON.stringify({ key, value }) }),
@@ -43,7 +42,7 @@ export const api = {
   updateFlow: (id: string, body: { name?: string; yaml?: string }) =>
     fetchJson<any>(`/flows/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteFlow: (id: string) =>
-    fetch(`${BASE_URL}/flows/${id}`, { method: 'DELETE' }),
+    fetch(apiUrl(`/flows/${id}`), { method: 'DELETE' }),
   duplicateFlow: (id: string, newName: string) =>
     fetchJson<any>(`/flows/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name: newName }) }),
 
@@ -107,7 +106,7 @@ export const api = {
   listRuns: () => fetchJson<any[]>('/runs'),
   getRun: (runId: string) => fetchJson<any>(`/runs/${runId}`),
   stopRun: (runId: string) =>
-    fetch(`${BASE_URL}/runs/${runId}`, { method: 'DELETE' }),
+    fetch(apiUrl(`/runs/${runId}`), { method: 'DELETE' }),
   pauseRun: (runId: string) =>
     fetchJson<any>(`/runs/${runId}/pause`, { method: 'POST' }),
   resumeRun: (runId: string) =>

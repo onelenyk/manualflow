@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-
-const WS_BASE = `ws://${window.location.host}`;
+import { getWsUrl } from './config';
 
 export function useWebSocket<T = any>(
   path: string,
@@ -12,7 +11,7 @@ export function useWebSocket<T = any>(
   useEffect(() => {
     if (!enabled) return;
 
-    const ws = new WebSocket(`${WS_BASE}${path}`);
+    const ws = new WebSocket(getWsUrl(path));
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -84,7 +83,7 @@ export function useBinaryWebSocketWithControl(
     if (!enabled) return;
 
     const connect = () => {
-      const ws = new WebSocket(`${WS_BASE}${path}`);
+      const ws = new WebSocket(getWsUrl(path));
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
 

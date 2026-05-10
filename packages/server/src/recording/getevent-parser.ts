@@ -1,6 +1,7 @@
 import { spawn, execFile } from 'child_process';
 import { EventEmitter } from 'events';
 import type { GeteventLine, InputDeviceRange } from './types.js';
+import { adbExecutable } from '../util/adb.js';
 
 // Format with device path: [timestamp] /dev/input/event3: EV_KEY BTN_TOUCH DOWN
 const LINE_REGEX_FULL = /\[\s*([\d.]+)\]\s+(\/dev\/\S+):\s+(\S+)\s+(\S+)\s+(\S+)/;
@@ -29,7 +30,7 @@ export function parseGeteventLine(line: string, devicePath?: string): GeteventLi
 
 export async function discoverInputDevice(serial: string): Promise<InputDeviceRange> {
   return new Promise((resolve, reject) => {
-    execFile('adb', ['-s', serial, 'shell', 'getevent', '-lp'], {
+    execFile(adbExecutable(), ['-s', serial, 'shell', 'getevent', '-lp'], {
       maxBuffer: 1024 * 1024,
     }, (err, stdout) => {
       if (err) return reject(new Error(`Failed to discover input device: ${err.message}`));
@@ -86,7 +87,7 @@ export class GeteventStream extends EventEmitter {
   }
 
   start(): void {
-    this.process = spawn('adb', [
+    this.process = spawn(adbExecutable(), [
       '-s', this.serial,
       'shell', 'getevent', '-lt', this.devicePath,
     ]);

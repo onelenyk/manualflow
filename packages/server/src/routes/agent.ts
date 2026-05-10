@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { adbExec, type AppState } from '../index.js';
+import { adbExecutable } from '../util/adb.js';
 import type { RecoveryMonitorState } from '../agent/recovery-monitor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -227,7 +228,7 @@ export function agentRoutes(
       state.agentProcess = null;
     }
 
-    const proc = spawn('adb', [
+    const proc = spawn(adbExecutable(), [
       '-s', serial, 'shell', 'am', 'instrument', '-w',
       '-e', 'class', 'com.maestrorecorder.agent.RecorderInstrumentation#startServer',
       `${AGENT_PKG}/androidx.test.runner.AndroidJUnitRunner`,
