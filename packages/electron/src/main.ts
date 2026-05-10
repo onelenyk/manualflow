@@ -41,6 +41,12 @@ function devServerEntry(): string {
   return path.resolve(repoRoot(), 'packages', 'server', 'src', 'index.ts');
 }
 
+function logServerLine(line: string, stream: 'stdout' | 'stderr'): void {
+  const tag = stream === 'stderr' ? 'server.err' : 'server';
+  // eslint-disable-next-line no-console
+  console.log(`[${tag}] ${line}`);
+}
+
 async function startEmbeddedServer(): Promise<ServerHandle> {
   const root = repoRoot();
   const adb = resolveBundledAdb({
@@ -53,11 +59,7 @@ async function startEmbeddedServer(): Promise<ServerHandle> {
       dev: true,
       cwd: root,
       adbPath: adb.adbPath ?? undefined,
-      onLog: (line, stream) => {
-        const tag = stream === 'stderr' ? 'server.err' : 'server';
-        // eslint-disable-next-line no-console
-        console.log(`[${tag}] ${line}`);
-      },
+      onLog: logServerLine,
     });
   }
 
@@ -68,11 +70,7 @@ async function startEmbeddedServer(): Promise<ServerHandle> {
     cwd: path.join(process.resourcesPath, 'server-pack'),
     adbPath: adb.adbPath ?? undefined,
     staticDir: packagedStaticDir(),
-    onLog: (line, stream) => {
-      const tag = stream === 'stderr' ? 'server.err' : 'server';
-      // eslint-disable-next-line no-console
-      console.log(`[${tag}] ${line}`);
-    },
+    onLog: logServerLine,
   });
 }
 
@@ -117,12 +115,15 @@ async function bootstrap(): Promise<void> {
   });
 
   ipcMain.handle('manualflow:pickFolder', async (_e, opts: { prompt?: string; defaultPath?: string }) => {
-    const win = BrowserWindow.getFocusedWindow() ?? undefined;
-    const result = await dialog.showOpenDialog(win!, {
+    const focused = BrowserWindow.getFocusedWindow();
+    const dialogOptions: Electron.OpenDialogOptions = {
       properties: ['openDirectory', 'createDirectory'],
       defaultPath: opts?.defaultPath,
       title: opts?.prompt ?? 'Pick a folder',
-    });
+    };
+    const result = focused
+      ? await dialog.showOpenDialog(focused, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
     return {
       canceled: result.canceled,
       path: result.filePaths[0] ?? null,
