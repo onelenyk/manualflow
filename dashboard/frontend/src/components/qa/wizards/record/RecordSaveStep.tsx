@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useStreamStore } from '../../../../stores/streamStore';
 import { api } from '../../../../api/client';
-import { useMaestroProjectStore } from '../../../../stores/maestroProjectStore';
+import { useLiveFlowStore } from '../../../../stores/liveFlowStore';
 
 export interface RecordSaveStepProps {
   onSave: (testName: string) => void;
+  /** Reports whether the form is in a savable state — used by the wizard
+      Forward button. Also receives a callback that triggers the same save
+      action the internal Save Test button does, so Forward can invoke it. */
+  onCanSaveChange?: (canSave: boolean, save: () => void) => void;
 }
 
-export function RecordSaveStep({ onSave }: RecordSaveStepProps) {
+export function RecordSaveStep({ onSave, onCanSaveChange }: RecordSaveStepProps) {
   const interactions = useStreamStore((s) => s.interactions);
-  const project = useMaestroProjectStore((s) => s.project);
   const [testName, setTestName] = useState('');
+  const [yamlDraft, setYamlDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -19,7 +23,22 @@ export function RecordSaveStep({ onSave }: RecordSaveStepProps) {
     // Pre-fill with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     setTestName(`test-${timestamp}`);
+    // Seed YAML preview from the live flow store; user can edit before save.
+    setYamlDraft(useLiveFlowStore.getState().getYaml());
   }, []);
+
+  const handleResetYaml = () => {
+    setYamlDraft(useLiveFlowStore.getState().getYaml());
+  };
+
+  // Expose can-save state + a triggerable save action to the parent wizard so
+  // its Forward button can mirror the internal Save Test button.
+  useEffect(() => {
+    if (!onCanSaveChange) return;
+    const canSave = !isSaving && !saved && testName.trim().length > 0 && yamlDraft.trim().length > 0;
+    onCanSaveChange(canSave, () => handleSave());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSaving, saved, testName, yamlDraft]);
 
   const handleSave = async () => {
     if (!testName.trim()) {
@@ -31,27 +50,11 @@ export function RecordSaveStep({ onSave }: RecordSaveStepProps) {
     setError(null);
 
     try {
-      // Export all interactions to YAML
-      const interactionIds = interactions.map((i) => i.id);
-      const response = await fetch('/api/stream/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appId: project?.rules?.parsed?.appId || 'com.example.app',
-          interactionIds,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Export failed');
-      }
-
-      const exportResult = await response.json();
-
-      // Save to Maestro project
+      // Save the (possibly edited) preview YAML rather than re-reading the store,
+      // so the user's last-minute edits land in the file.
       await api.saveMaestroFlow({
         path: `${testName}.yaml`,
-        yaml: exportResult.yaml,
+        yaml: yamlDraft,
       });
 
       setSaved(true);
@@ -118,6 +121,35 @@ export function RecordSaveStep({ onSave }: RecordSaveStepProps) {
           className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder:text-slate-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
           disabled={isSaving}
         />
+      </div>
+
+      {/* YAML preview (editable) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label htmlFor="yaml-preview" className="block text-sm font-medium text-white">
+            YAML preview
+          </label>
+          <button
+            type="button"
+            onClick={handleResetYaml}
+            className="text-[11px] text-slate-400 hover:text-white"
+            disabled={isSaving}
+          >
+            Reset to recorded
+          </button>
+        </div>
+        <textarea
+          id="yaml-preview"
+          value={yamlDraft}
+          onChange={(e) => setYamlDraft(e.target.value)}
+          spellCheck={false}
+          rows={Math.min(20, Math.max(8, yamlDraft.split('\n').length + 1))}
+          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 resize-y"
+          disabled={isSaving}
+        />
+        <p className="text-[11px] text-slate-500 mt-1">
+          Last-minute edits here will be saved to the file. Use "Reset" to discard.
+        </p>
       </div>
 
       {/* Save button */}

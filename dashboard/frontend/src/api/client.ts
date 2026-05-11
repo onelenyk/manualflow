@@ -18,6 +18,7 @@ export const api = {
   getDevices: () => fetchJson<any[]>('/devices'),
   getDeviceInfo: (serial: string) => fetchJson<any>(`/devices/${serial}/info`),
   selectDevice: (serial: string) => fetchJson<any>(`/devices/${serial}/select`, { method: 'POST' }),
+  listApps: (serial: string) => fetchJson<{ apps: string[] }>(`/devices/${serial}/apps`),
   launchMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror`, { method: 'POST' }),
   stopMirror: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/stop`, { method: 'POST' }),
   getMirrorStatus: (serial: string) => fetchJson<any>(`/devices/${serial}/mirror/status`),

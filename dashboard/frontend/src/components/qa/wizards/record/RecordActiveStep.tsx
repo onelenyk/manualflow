@@ -1,103 +1,124 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useStreamStore } from '../../../../stores/streamStore';
 import { useDeviceStore } from '../../../../stores/deviceStore';
+import { useLiveFlowStore } from '../../../../stores/liveFlowStore';
 import { api } from '../../../../api/client';
 import { FullscreenScreenMirror } from '../../wrappers/FullscreenScreenMirror';
+import { WizardStepNav } from '../../shared/WizardStepNav';
+import { InteractionHeader } from '../../../recording/shared/InteractionHeader';
+import { InteractionSummary } from '../../../recording/shared/InteractionSummary';
+import { YamlCommandEditor } from '../../../recording/shared/YamlCommandEditor';
 
 export interface RecordActiveStepProps {
   onStop: () => void;
+  /** Called when the user wants to abandon the recording and return to step 1.
+      The wizard parent is responsible for actually stopping the server-side
+      recording — this component just reports the intent. */
+  onBackToPrepare?: () => void;
 }
 
-function getYamlCommand(interaction: any, index: number): string {
-  if (!interaction) return '';
-
-  const type = interaction.touchAction?.type || interaction.source || 'unknown';
-
-  switch (type?.toLowerCase()) {
-    case 'tap':
-      const x = interaction.touchAction?.x || 0;
-      const y = interaction.touchAction?.y || 0;
-      return `tap: { x: ${Math.round(x)}, y: ${Math.round(y)} }`;
-    case 'scroll':
-      const direction = interaction.touchAction?.direction || 'down';
-      return `scroll: ${direction}`;
-    case 'long_press':
-      return `longPress: { duration: 1000 }`;
-    case 'window_changed':
-      return `waitForAnimationToEnd`;
-    default:
-      return `# ${type}`;
-  }
-}
-
-function getActionIcon(type: string): string {
-  const lower = type?.toLowerCase() || '';
-  if (lower.includes('tap')) return '👆';
-  if (lower.includes('scroll')) return '🔄';
-  if (lower.includes('long_press')) return '⏱️';
-  if (lower.includes('window')) return '🪟';
-  if (lower.includes('access')) return '📋';
-  return '⚡';
-}
-
-function getActionColor(type: string): string {
-  const lower = type?.toLowerCase() || '';
-  if (lower.includes('tap')) return 'from-blue-500/20 to-blue-600/10 border-blue-500/40';
-  if (lower.includes('scroll')) return 'from-purple-500/20 to-purple-600/10 border-purple-500/40';
-  if (lower.includes('long_press')) return 'from-orange-500/20 to-orange-600/10 border-orange-500/40';
-  if (lower.includes('window')) return 'from-green-500/20 to-green-600/10 border-green-500/40';
-  return 'from-slate-500/20 to-slate-600/10 border-slate-500/40';
-}
-
-export function RecordActiveStep({ onStop }: RecordActiveStepProps) {
+export function RecordActiveStep({ onStop, onBackToPrepare }: RecordActiveStepProps) {
   const interactions = useStreamStore((s) => s.interactions);
+  const removeInteractionFromStream = useStreamStore((s) => s.removeInteraction);
+  const clearInteractions = useStreamStore((s) => s.clearInteractions);
   const selectedDevice = useDeviceStore((s) => s.selectedDevice);
-  const [error, setError] = useState<string | null>(null);
-  const [editingYaml, setEditingYaml] = useState<Record<number, string>>({});
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const addFromInteraction = useLiveFlowStore((s) => s.addFromInteraction);
+  const remapInteraction = useLiveFlowStore((s) => s.remapInteraction);
+  const clearLiveFlow = useLiveFlowStore((s) => s.clear);
+  const entries = useLiveFlowStore((s) => s.entries);
   const { connectSSE, disconnectSSE } = useStreamStore();
+
+  const [error, setError] = useState<string | null>(null);
+  const [showFiltered, setShowFiltered] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Start recording and connect SSE on mount
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // Start recording + connect SSE on mount
   useEffect(() => {
-    const startRecordingSession = async () => {
+    const start = async () => {
       try {
         await api.startRecording({ deviceSerial: selectedDevice || undefined });
         connectSSE();
       } catch (err) {
         setError('Failed to start recording. Please try again.');
+        // eslint-disable-next-line no-console
         console.error('Start recording error:', err);
       }
     };
-
-    startRecordingSession();
+    start();
     return () => disconnectSSE();
   }, [connectSSE, disconnectSSE, selectedDevice]);
 
-  // Auto-scroll interactions list
+  // Auto-feed completed interactions into liveFlowStore.
+  // addFromInteraction is idempotent via processedInteractionIds.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [interactions.length]);
+    for (const i of interactions) {
+      if (i.status === 'complete') addFromInteraction(i as any);
+    }
+  }, [interactions, addFromInteraction]);
+
+  // Auto-scroll to bottom on new interaction — pause while user is editing.
+  // `block: 'end'` keeps the bottom in view without ever scrolling a parent
+  // container; otherwise the wizard header/footer can be scrolled out of view
+  // when content first appears and layout shifts.
+  useEffect(() => {
+    if (isEditing) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [interactions.length, isEditing]);
 
   const handleStop = async () => {
     try {
       onStop();
-    } catch (err) {
+    } catch {
       setError('Failed to stop recording. Please try again.');
     }
   };
 
-  const handleStartAgain = () => {
-    window.location.reload();
+  const handleStartAgain = () => window.location.reload();
+
+  const handleResetAll = () => {
+    void clearInteractions();
+    clearLiveFlow();
+    setExpandedIds(new Set());
   };
 
-  const handleYamlChange = (index: number, value: string) => {
-    setEditingYaml(prev => ({ ...prev, [index]: value }));
+  const handleRemoveInteraction = (id: number) => {
+    // Drop the flow entries belonging to this interaction first so the YAML
+    // output reflects the deletion immediately, then evict the interaction
+    // itself from the stream.
+    remapInteraction(id, []);
+    removeInteractionFromStream(id);
+    setExpandedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
-  const getDisplayYaml = (index: number) => {
-    return editingYaml[index] ?? getYamlCommand(interactions[index], index);
-  };
+  // Group entries by interactionId for fast lookup
+  const entriesByInteractionId = useMemo(() => {
+    const m = new Map<number, typeof entries>();
+    for (const e of entries) {
+      if (e.interactionId == null) continue;
+      const arr = m.get(e.interactionId) ?? [];
+      arr.push(e);
+      m.set(e.interactionId, arr);
+    }
+    return m;
+  }, [entries]);
+
+  const visibleInteractions = interactions.filter((i) => !i.filteredAsKeyboardTap);
+  const filteredInteractions = interactions.filter((i) => i.filteredAsKeyboardTap);
 
   if (error) {
     return (
@@ -115,100 +136,114 @@ export function RecordActiveStep({ onStop }: RecordActiveStepProps) {
     );
   }
 
+  const renderRow = (interaction: any, sequenceIndex: number, opts: { greyed?: boolean } = {}) => {
+    const list = entriesByInteractionId.get(interaction.id) ?? [];
+    const expanded = expandedIds.has(interaction.id);
+    return (
+      <div
+        key={interaction.id}
+        className={`rounded-lg border border-slate-800 bg-slate-900/40 p-3 ${
+          opts.greyed ? 'opacity-40 pointer-events-none' : ''
+        }`}
+      >
+        <div className="flex flex-col md:flex-row gap-3 items-stretch">
+          {/* Left: compact interaction header, expandable to full detail */}
+          <div className="flex-1 min-w-0 bg-slate-950/30 rounded">
+            <InteractionHeader
+              interaction={interaction}
+              sequenceIndex={sequenceIndex}
+              expanded={expanded}
+              onToggleExpand={() => toggleExpanded(interaction.id)}
+              onRemove={opts.greyed ? undefined : () => handleRemoveInteraction(interaction.id)}
+            />
+            {expanded && (
+              <div className="px-2 pb-2 border-t border-slate-800">
+                <InteractionSummary interaction={interaction} />
+              </div>
+            )}
+          </div>
+          {/* Arrow indicating "interaction → yaml" derivation */}
+          <div className="hidden md:flex items-center text-slate-600 text-lg shrink-0" aria-hidden>
+            →
+          </div>
+          {/* Right: editable YAML for this interaction */}
+          <div className="flex-1 min-w-0 flex">
+            <div className="flex-1">
+              <YamlCommandEditor
+                entries={list}
+                onRemap={(cmds) => remapInteraction(interaction.id, cmds)}
+                readOnly={opts.greyed || list.length === 0}
+                onFocusChange={setIsEditing}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen flex flex-col bg-slate-950">
+      <div className="px-4 py-2 border-b border-slate-800 shrink-0">
+        <WizardStepNav
+          step={2}
+          totalSteps={3}
+          title="Recording"
+          onBack={onBackToPrepare}
+          backLabel="Cancel"
+          onForward={handleStop}
+          forwardEnabled
+          forwardLabel="Review & save"
+        />
+      </div>
       <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-3 p-3 justify-center">
-        {/* Left: Device mirror - maintains 9:16 phone aspect ratio */}
+        {/* Left: Device mirror */}
         <div className="flex flex-col w-full lg:w-96 lg:shrink-0 min-h-0 aspect-auto lg:aspect-[9/16] bg-black rounded-lg border border-slate-700 overflow-hidden">
           <FullscreenScreenMirror />
         </div>
 
-        {/* Right: Interactions + YAML - capped width for readability */}
-        <div className="flex flex-col flex-1 lg:max-w-2xl bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden min-h-0">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/60">
-            <h3 className="text-xs font-bold text-white">Actions & Commands ({interactions.length})</h3>
+        {/* Right: Interactions + paired YAML — full width so each row can split horizontally */}
+        <div className="flex flex-col flex-1 bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden min-h-0">
+          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-900/60">
+            <h3 className="text-xs font-bold text-white">Interactions → Commands ({visibleInteractions.length})</h3>
+            <div className="flex items-center gap-3">
+              {filteredInteractions.length > 0 && (
+                <button
+                  onClick={() => setShowFiltered((v) => !v)}
+                  className="text-[11px] text-slate-400 hover:text-white"
+                >
+                  {showFiltered ? `Hide ${filteredInteractions.length} filtered` : `Show ${filteredInteractions.length} filtered`}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleResetAll}
+                disabled={interactions.length === 0 && entries.length === 0}
+                className="text-[11px] text-slate-400 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Remove every recorded interaction and clear the flow"
+              >
+                Reset
+              </button>
+            </div>
           </div>
 
+          {/* Sticky column headers — only shown on md+ when there are rows */}
+          {(visibleInteractions.length > 0 || filteredInteractions.length > 0) && (
+            <div className="hidden md:flex items-center gap-3 px-6 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-950/60 border-b border-slate-800 shrink-0">
+              <div className="flex-1">Interaction</div>
+              <div className="shrink-0 w-4" aria-hidden />
+              <div className="flex-1">YAML command</div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto bg-slate-950/30">
-            {interactions.length === 0 ? (
+            {visibleInteractions.length === 0 && filteredInteractions.length === 0 ? (
               <div className="flex items-center justify-center h-full text-xs text-slate-400">
                 Waiting for interactions...
               </div>
             ) : (
-              <div className="space-y-2 p-3">
-                {interactions.map((interaction, i) => {
-                  const actionType = interaction.touchAction?.type || interaction.source || 'Event';
-                  const icon = getActionIcon(actionType);
-                  const colorClass = getActionColor(actionType);
-                  return (
-                    <div
-                      key={i}
-                      className={`bg-gradient-to-br ${colorClass} rounded-lg border backdrop-blur-sm hover:shadow-lg transition-all group`}
-                    >
-                      <div className="p-4">
-                        {/* Header with number and type */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="text-2xl">{icon}</div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Step {i + 1}</div>
-                              <div className="text-sm font-semibold text-white mt-0.5">{actionType}</div>
-                            </div>
-                          </div>
-                          <div className="text-[10px] text-slate-500 font-mono bg-slate-800/40 px-2 py-1 rounded">
-                            #{i + 1}
-                          </div>
-                        </div>
-
-                        {/* Details - 3 column layout */}
-                        <div className="grid grid-cols-3 gap-2 mb-3 text-[10px]">
-                          {interaction.element?.text && (
-                            <div className="bg-slate-800/40 rounded px-2 py-1.5 border border-slate-700/50">
-                              <div className="text-slate-400 font-semibold uppercase tracking-wide mb-0.5">Element</div>
-                              <div className="text-slate-200 font-mono text-[9px] line-clamp-2">{interaction.element.text}</div>
-                            </div>
-                          )}
-                          {(interaction.touchAction as any)?.x !== undefined && (
-                            <div className="bg-slate-800/40 rounded px-2 py-1.5 border border-slate-700/50">
-                              <div className="text-slate-400 font-semibold uppercase tracking-wide mb-0.5">X / Y</div>
-                              <div className="text-slate-200 font-mono text-[9px]">
-                                {Math.round((interaction.touchAction as any).x)} / {Math.round((interaction.touchAction as any).y)}
-                              </div>
-                            </div>
-                          )}
-                          {(interaction.touchAction as any)?.x !== undefined && (
-                            <div className="bg-slate-800/40 rounded px-2 py-1.5 border border-slate-700/50">
-                              <div className="text-slate-400 font-semibold uppercase tracking-wide mb-0.5">Type</div>
-                              <div className="text-slate-300 font-semibold text-[9px]">{actionType}</div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* YAML command section */}
-                        <div className="border-t border-slate-700/50 pt-3">
-                          <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide mb-2">YAML Command</div>
-                          {selectedIndex === i ? (
-                            <input
-                              type="text"
-                              value={getDisplayYaml(i)}
-                              onChange={(e) => handleYamlChange(i, e.target.value)}
-                              onBlur={() => setSelectedIndex(null)}
-                              className="w-full bg-blue-900/40 text-blue-100 text-sm p-2 rounded border border-blue-500/60 focus:border-blue-400 outline-none font-mono"
-                              autoFocus
-                            />
-                          ) : (
-                            <div
-                              onClick={() => setSelectedIndex(i)}
-                              className="w-full text-sm text-slate-100 font-mono p-2.5 rounded bg-slate-800/40 hover:bg-slate-700/60 cursor-pointer break-words border border-transparent hover:border-slate-600/50 transition-colors"
-                            >
-                              {getDisplayYaml(i)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="p-3 space-y-2">
+                {visibleInteractions.map((i, idx) => renderRow(i, idx + 1))}
+                {showFiltered && filteredInteractions.map((i, idx) => renderRow(i, visibleInteractions.length + idx + 1, { greyed: true }))}
                 <div ref={bottomRef} />
               </div>
             )}
@@ -216,7 +251,6 @@ export function RecordActiveStep({ onStop }: RecordActiveStepProps) {
         </div>
       </div>
 
-      {/* Bottom controls */}
       <div className="px-4 py-4 border-t border-slate-800 flex items-center justify-center gap-4">
         <button
           onClick={handleStop}

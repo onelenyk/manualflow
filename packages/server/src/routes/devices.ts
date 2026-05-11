@@ -24,6 +24,30 @@ export function deviceRoutes(state: AppState) {
     }
   });
 
+  // List third-party packages installed on the device. Used by the Record
+  // wizard's "App to test" picker so the user can pin the recording's appId
+  // upfront. `pm list packages -3` returns only user-installed apps (excludes
+  // system packages); the agent + maestro-recorder packages are filtered out
+  // so the list is just the apps a tester might care about.
+  router.get('/devices/:serial/apps', async (req, res) => {
+    try {
+      const s = req.params.serial;
+      const out = await adbExec('-s', s, 'shell', 'pm', 'list', 'packages', '-3');
+      const HIDE = new Set([
+        'com.maestrorecorder.agent',
+        'com.maestrorecorder.agent.test',
+      ]);
+      const apps = out
+        .split('\n')
+        .map((line: string) => line.replace(/^package:/, '').trim())
+        .filter((pkg: string) => pkg && !HIDE.has(pkg))
+        .sort();
+      res.json({ apps });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   router.get('/devices/:serial/info', async (req, res) => {
     try {
       const s = req.params.serial;
