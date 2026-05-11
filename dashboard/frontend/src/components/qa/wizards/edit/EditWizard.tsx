@@ -30,12 +30,29 @@ export function EditWizard({ onBack }: { onBack: () => void }) {
     onBack();
   };
 
+  const handleBack = () => {
+    if (step === 1) onBack();
+    else if (step === 2) setStep(1);
+    else if (step === 3) setStep(2);
+  };
+
+  const title =
+    step === 1 ? 'Edit a test' :
+    step === 2 ? 'Edit YAML' :
+    'Save changes';
+
+  const backLabel =
+    step === 1 ? 'Cancel' :
+    step === 2 ? 'Choose another' :
+    'Back to edit';
+
   return (
     <WizardContainer
-      title={step === 1 ? 'Edit a test' : step === 2 ? undefined : 'Save changes'}
+      title={title}
       step={step}
       totalSteps={3}
-      onBack={step === 1 ? onBack : undefined}
+      onBack={handleBack}
+      backLabel={backLabel}
     >
       {step === 1 && <RunChooseStep onSelectTest={handleSelectTest} />}
       {step === 2 && selectedFlowPath && (

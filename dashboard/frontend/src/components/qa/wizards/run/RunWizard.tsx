@@ -28,12 +28,26 @@ export function RunWizard({ onBack }: { onBack: () => void }) {
     onBack();
   };
 
+  const handleBack = () => {
+    if (step === 1) onBack();
+    else if (step === 2) setStep(1);
+    else if (step === 3) setStep(1);
+  };
+
+  const title =
+    step === 1 ? 'Run a test' :
+    step === 2 ? 'Running' :
+    'Results';
+
+  const backLabel = step === 1 ? 'Cancel' : 'Choose another';
+
   return (
     <WizardContainer
-      title={step === 1 ? 'Run a test' : step === 2 ? undefined : 'Results'}
+      title={title}
       step={step}
       totalSteps={3}
-      onBack={step === 1 ? onBack : undefined}
+      onBack={handleBack}
+      backLabel={backLabel}
     >
       {step === 1 && <RunChooseStep onSelectTest={handleSelectTest} />}
       {step === 2 && selectedFlowPath && (
