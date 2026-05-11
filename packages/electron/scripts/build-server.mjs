@@ -28,6 +28,10 @@ const SERVER_PKG = path.resolve(REPO_ROOT, 'packages', 'server');
 const SHARED_PKG = path.resolve(REPO_ROOT, 'packages', 'shared');
 const FRONTEND_PKG = path.resolve(REPO_ROOT, 'dashboard', 'frontend');
 const FRONTEND_DIST = path.resolve(REPO_ROOT, 'dashboard', 'src', 'main', 'resources', 'static');
+const AGENT_APK = path.resolve(
+  REPO_ROOT, 'agent', 'build', 'outputs', 'apk', 'androidTest', 'debug',
+  'agent-debug-androidTest.apk',
+);
 const STAGING = path.resolve(ELECTRON_PKG, 'build', 'server-pack');
 
 function log(...args) { console.log('[build-server]', ...args); }
@@ -67,6 +71,17 @@ function copyFrontendToStaging() {
   // Server expects MANUALFLOW_STATIC_DIR/index.html. We stage the built SPA
   // under server-pack/static so the supervisor can pass an absolute path.
   cpSync(FRONTEND_DIST, path.join(STAGING, 'static'), { recursive: true });
+}
+
+function copyAgentApkToStaging() {
+  if (!existsSync(AGENT_APK)) {
+    log(`agent APK not found at ${AGENT_APK} — skipping (build it with ./gradlew :agent:assembleDebugAndroidTest)`);
+    return;
+  }
+  const target = path.join(STAGING, 'agent', 'agent-debug-androidTest.apk');
+  mkdirSync(path.dirname(target), { recursive: true });
+  copyFileSync(AGENT_APK, target);
+  log('staged agent APK ->', target);
 }
 
 function synthesizePackageJson() {
@@ -146,6 +161,7 @@ function main() {
   dropInSharedPackage();
   copyServerDist();
   copyFrontendToStaging();
+  copyAgentApkToStaging();
   runElectronRebuild();
 
   log('staging ready:', STAGING);

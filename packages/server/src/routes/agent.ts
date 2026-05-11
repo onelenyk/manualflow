@@ -8,7 +8,11 @@ import { adbExecutable } from '../util/adb.js';
 import type { RecoveryMonitorState } from '../agent/recovery-monitor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const APK_PATH = path.resolve(__dirname, '../../../../agent/build/outputs/apk/androidTest/debug/agent-debug-androidTest.apk');
+// Packaged builds set MANUALFLOW_AGENT_APK to the bundled APK under
+// Resources/server-pack/agent/. In a dev checkout we fall back to the
+// gradle output path under the repo root.
+const APK_PATH = process.env.MANUALFLOW_AGENT_APK
+  || path.resolve(__dirname, '../../../../agent/build/outputs/apk/androidTest/debug/agent-debug-androidTest.apk');
 const AGENT_PKG = 'com.maestrorecorder.agent.test';
 const AGENT_PORT = 50051;
 
@@ -290,16 +294,31 @@ export function agentRoutes(
     res.json({ status: 'stopped' });
   });
 
-  // Build agent APK
+  // Build agent APK. Only works in a dev checkout where gradle + the agent
+  // sources are present. The packaged distribution does not bundle the JDK
+  // or gradle, so we short-circuit and direct the user to the bundled APK
+  // (which the wizard installs via /api/agent/install).
   router.post('/agent/build', (_req, res) => {
-    const proc = spawn('./gradlew', [':agent:assembleDebugAndroidTest'], {
-      cwd: path.resolve(__dirname, '../../../..'),
+    const repoRoot = path.resolve(__dirname, '../../../..');
+    const gradlew = path.join(repoRoot, 'gradlew');
+    if (!fs.existsSync(gradlew)) {
+      return res.status(409).json({
+        error: "Agent build requires a dev checkout. In the packaged app, click 'Install agent' instead — the APK is already bundled.",
+      });
+    }
+
+    const proc = spawn(gradlew, [':agent:assembleDebugAndroidTest'], {
+      cwd: repoRoot,
       stdio: 'pipe',
     });
 
     let output = '';
     proc.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
     proc.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+
+    proc.on('error', (err) => {
+      res.status(500).json({ error: 'Build spawn failed', detail: err.message });
+    });
 
     proc.on('close', (code) => {
       if (code === 0) {

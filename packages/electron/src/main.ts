@@ -37,6 +37,10 @@ function packagedStaticDir(): string {
   return path.join(process.resourcesPath, 'server-pack', 'static');
 }
 
+function packagedAgentApk(): string {
+  return path.join(process.resourcesPath, 'server-pack', 'agent', 'agent-debug-androidTest.apk');
+}
+
 function devServerEntry(): string {
   return path.resolve(repoRoot(), 'packages', 'server', 'src', 'index.ts');
 }
@@ -70,6 +74,7 @@ async function startEmbeddedServer(): Promise<ServerHandle> {
     cwd: path.join(process.resourcesPath, 'server-pack'),
     adbPath: adb.adbPath ?? undefined,
     staticDir: packagedStaticDir(),
+    extraEnv: { MANUALFLOW_AGENT_APK: packagedAgentApk() },
     onLog: logServerLine,
   });
 }
