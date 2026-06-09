@@ -86,21 +86,16 @@ chmod +x "$INSTALL_DIR/manualflow"
 
 # ── Symlink ────────────────────────────────────────────────────────────────
 LINK_DIR=""
-for candidate in /usr/local/bin "$HOME/.local/bin"; do
-  if [ -d "$candidate" ] && [ -w "$candidate" ]; then LINK_DIR="$candidate"; break; fi
-done
-if [ -z "$LINK_DIR" ] && [ -d /usr/local/bin ]; then
-  echo "→ /usr/local/bin needs sudo for the symlink"
-  sudo ln -sf "$INSTALL_DIR/manualflow" /usr/local/bin/manualflow
+if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
   LINK_DIR=/usr/local/bin
-elif [ -n "$LINK_DIR" ]; then
-  ln -sf "$INSTALL_DIR/manualflow" "$LINK_DIR/manualflow"
+elif [ -d "$HOME/.local/bin" ] && [ -w "$HOME/.local/bin" ]; then
+  LINK_DIR="$HOME/.local/bin"
 else
   mkdir -p "$HOME/.local/bin"
-  ln -sf "$INSTALL_DIR/manualflow" "$HOME/.local/bin/manualflow"
   LINK_DIR="$HOME/.local/bin"
   yellow "⚠️  Add $HOME/.local/bin to your PATH if it isn't already."
 fi
+ln -sf "$INSTALL_DIR/manualflow" "$LINK_DIR/manualflow"
 
 green "✅ Installed manualflow → $LINK_DIR/manualflow"
 echo
