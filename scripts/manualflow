@@ -37,7 +37,7 @@ require() {
 }
 
 device_serial() {
-  adb devices -l 2>/dev/null | awk '/\sdevice / {print $1; exit}'
+  adb devices -l 2>/dev/null | awk '/device / {print $1; exit}'
 }
 
 doctor() {
